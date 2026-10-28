@@ -1,0 +1,635 @@
+{
+  "info": {
+    "_postman_id": "57f23422-15b7-4b50-93d7-a9088172862c",
+    "name": "WikiPulse - Wikimedia APIs",
+    "description": "Import-ready requests for the Wikipedia and Wikimedia APIs used by WikiPulse. Includes live and limited historical EventStreams, project-wide metrics, and XML dump discovery. Run 'Get latest revision' before revision, compare, and Revert Risk requests.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "pm.request.headers.upsert({ key: 'User-Agent', value: pm.collectionVariables.get('user_agent') });"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Live Changes",
+      "description": "Live Wikipedia edit events.",
+      "item": [
+        {
+          "name": "Recent changes stream",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "text/event-stream"
+              }
+            ],
+            "url": "https://stream.wikimedia.org/v2/stream/recentchange",
+            "description": "Keeps the connection open and sends edits as they happen. Sample event: data: {\"type\":\"edit\",\"title\":\"Earth\",\"namespace\":0,\"revision\":{\"old\":123,\"new\":124}}"
+          },
+          "response": []
+        },
+        {
+          "name": "Replay recent changes from a timestamp",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "text/event-stream"
+              }
+            ],
+            "url": "https://stream.wikimedia.org/v2/stream/recentchange?since={{replay_since}}",
+            "description": "Starts near replay_since and catches up as fast as Wikimedia and the client allow. History is normally retained for only 7 to 31 days. There is no 2x or 5x server-side speed setting. Save events to Kafka for permanent or controlled-speed replay."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "2. Historical Activity",
+      "description": "Daily and monthly metrics from the Wikimedia Analytics API.",
+      "item": [
+        {
+          "name": "Total edits for the whole project",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "https://wikimedia.org/api/rest_v1/metrics/edits/aggregate/{{analytics_project}}/all-editor-types/all-page-types/monthly/{{aggregate_start_date}}/{{aggregate_end_date}}",
+            "description": "Returns monthly edit totals for the entire Wikipedia project. No page title is needed. Add the edits values in items[0].results to get one total for the full period."
+          },
+          "response": []
+        },
+        {
+          "name": "Daily edits for a page",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "https://wikimedia.org/api/rest_v1/metrics/edits/per-page/{{analytics_project}}/{{page_title}}/all-editor-types/daily/{{start_date}}/{{end_date}}",
+            "description": "Counts edits to one page for each day. Sample result: {\"timestamp\":\"2026010100\",\"edits\":12}."
+          },
+          "response": []
+        },
+        {
+          "name": "Daily absolute bytes changed",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "https://wikimedia.org/api/rest_v1/metrics/bytes-difference/absolute/per-page/{{analytics_project}}/{{page_title}}/all-editor-types/daily/{{start_date}}/{{end_date}}",
+            "description": "Counts all byte movement, even when the final page size changes very little. Sample result: {\"timestamp\":\"2026010100\",\"abs_bytes_diff\":430}."
+          },
+          "response": []
+        },
+        {
+          "name": "Daily net bytes changed",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "https://wikimedia.org/api/rest_v1/metrics/bytes-difference/net/per-page/{{analytics_project}}/{{page_title}}/all-editor-types/daily/{{start_date}}/{{end_date}}",
+            "description": "Shows the final page-size change for each day. Sample result: {\"timestamp\":\"2026010100\",\"bytes_diff\":250}."
+          },
+          "response": []
+        },
+        {
+          "name": "Daily page views",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "https://wikimedia.org/api/rest_v1/metrics/pageviews/per-article/{{analytics_project}}/all-access/all-agents/{{page_title}}/daily/{{start_date}}/{{end_date}}",
+            "description": "Counts page views for each day. Sample result: {\"timestamp\":\"2026010100\",\"views\":12500}."
+          },
+          "response": []
+        },
+        {
+          "name": "Most-viewed pages",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "https://wikimedia.org/api/rest_v1/metrics/pageviews/top/{{analytics_project}}/all-access/{{year}}/{{month}}/all-days",
+            "description": "Lists the most-viewed pages for a month. Sample result: {\"article\":\"Main_Page\",\"rank\":1,\"views\":5000000}."
+          },
+          "response": []
+        },
+        {
+          "name": "Most-edited pages",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "https://wikimedia.org/api/rest_v1/metrics/edited-pages/top-by-edits/{{analytics_project}}/all-editor-types/content/{{year}}/{{month}}/all-days",
+            "description": "Lists the pages with the most edits in a month. Sample result: {\"page_title\":\"Earth\",\"rank\":1,\"edits\":120}."
+          },
+          "response": []
+        },
+        {
+          "name": "Editor totals",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "https://wikimedia.org/api/rest_v1/metrics/editors/aggregate/{{analytics_project}}/all-editor-types/all-page-types/{{editor_activity_level}}/monthly/{{start_date}}/{{editor_end_date}}",
+            "description": "Counts editors in the selected edit-count range. The default range is 1 to 4 edits. Sample result: {\"timestamp\":\"2026010100\",\"editors\":420}."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "3. Page and Revision Data",
+      "description": "Page information, revision information, and revision differences.",
+      "item": [
+        {
+          "name": "Get latest revision",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "const data = pm.response.json();",
+                  "const revision = data.query.pages[0].revisions[0];",
+                  "pm.collectionVariables.set('revision_id', String(revision.revid));",
+                  "pm.collectionVariables.set('from_revision_id', String(revision.parentid));",
+                  "pm.collectionVariables.set('to_revision_id', String(revision.revid));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "https://{{wiki_domain}}/w/api.php?action=query&prop=revisions&titles={{page_title}}&rvprop=ids%7Ctimestamp%7Cuser%7Ccomment%7Csize%7Cflags&rvlimit=1&format=json&formatversion=2",
+              "protocol": "https",
+              "host": [
+                "{{wiki_domain}}"
+              ],
+              "path": [
+                "w",
+                "api.php"
+              ],
+              "query": [
+                { "key": "action", "value": "query" },
+                { "key": "prop", "value": "revisions" },
+                { "key": "titles", "value": "{{page_title}}" },
+                { "key": "rvprop", "value": "ids|timestamp|user|comment|size|flags" },
+                { "key": "rvlimit", "value": "1" },
+                { "key": "format", "value": "json" },
+                { "key": "formatversion", "value": "2" }
+              ]
+            },
+            "description": "Reads the latest revision and saves its ID and parent ID as collection variables for later requests."
+          },
+          "response": []
+        },
+        {
+          "name": "Compare two revisions",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "https://{{wiki_domain}}/w/api.php?action=compare&fromrev={{from_revision_id}}&torev={{to_revision_id}}&prop=diff%7Cids%7Ctitle%7Csize%7Ctimestamp&format=json&formatversion=2",
+              "protocol": "https",
+              "host": [
+                "{{wiki_domain}}"
+              ],
+              "path": [
+                "w",
+                "api.php"
+              ],
+              "query": [
+                { "key": "action", "value": "compare" },
+                { "key": "fromrev", "value": "{{from_revision_id}}" },
+                { "key": "torev", "value": "{{to_revision_id}}" },
+                { "key": "prop", "value": "diff|ids|title|size|timestamp" },
+                { "key": "format", "value": "json" },
+                { "key": "formatversion", "value": "2" }
+              ]
+            },
+            "description": "Returns the changed text and basic information for two revisions. Run 'Get latest revision' first."
+          },
+          "response": []
+        },
+        {
+          "name": "REST page details",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "https://{{wiki_domain}}/w/rest.php/v1/page/{{page_title}}/bare",
+            "description": "Returns page details, the latest revision, license, and a link to the page HTML."
+          },
+          "response": []
+        },
+        {
+          "name": "REST revision with HTML",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "https://{{wiki_domain}}/w/rest.php/v1/revision/{{revision_id}}/with_html",
+            "description": "Returns revision details and rendered HTML. Run 'Get latest revision' first."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "4. Related Pages and Location",
+      "description": "Page links, language links, categories, coordinates, backlinks, and nearby pages.",
+      "item": [
+        {
+          "name": "Page facts and outgoing links",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "https://{{wiki_domain}}/w/api.php?action=query&titles={{page_title}}&prop=info%7Ccoordinates%7Cpageprops%7Ccategories%7Clanglinks%7Clinks&inprop=url&ppprop=wikibase_item&coprimary=1&cllimit={{result_limit}}&lllimit={{result_limit}}&pllimit={{result_limit}}&redirects=1&format=json&formatversion=2",
+              "protocol": "https",
+              "host": [
+                "{{wiki_domain}}"
+              ],
+              "path": [
+                "w",
+                "api.php"
+              ],
+              "query": [
+                { "key": "action", "value": "query" },
+                { "key": "titles", "value": "{{page_title}}" },
+                { "key": "prop", "value": "info|coordinates|pageprops|categories|langlinks|links" },
+                { "key": "inprop", "value": "url" },
+                { "key": "ppprop", "value": "wikibase_item" },
+                { "key": "coprimary", "value": "1" },
+                { "key": "cllimit", "value": "{{result_limit}}" },
+                { "key": "lllimit", "value": "{{result_limit}}" },
+                { "key": "pllimit", "value": "{{result_limit}}" },
+                { "key": "redirects", "value": "1" },
+                { "key": "format", "value": "json" },
+                { "key": "formatversion", "value": "2" }
+              ]
+            },
+            "description": "Returns page size, outgoing links, language versions, coordinates, categories, and the Wikidata item ID."
+          },
+          "response": []
+        },
+        {
+          "name": "Backlinks",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "https://{{wiki_domain}}/w/api.php?action=query&list=backlinks&bltitle={{page_title}}&blnamespace=0&bllimit={{result_limit}}&format=json&formatversion=2",
+              "protocol": "https",
+              "host": [
+                "{{wiki_domain}}"
+              ],
+              "path": [
+                "w",
+                "api.php"
+              ],
+              "query": [
+                { "key": "action", "value": "query" },
+                { "key": "list", "value": "backlinks" },
+                { "key": "bltitle", "value": "{{page_title}}" },
+                { "key": "blnamespace", "value": "0" },
+                { "key": "bllimit", "value": "{{result_limit}}" },
+                { "key": "format", "value": "json" },
+                { "key": "formatversion", "value": "2" }
+              ]
+            },
+            "description": "Finds article pages that link to the selected page."
+          },
+          "response": []
+        },
+        {
+          "name": "Geosearch",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "https://{{wiki_domain}}/w/api.php?action=query&list=geosearch&gscoord={{latitude}}%7C{{longitude}}&gsradius={{radius_meters}}&gslimit={{result_limit}}&gsnamespace=0&format=json&formatversion=2",
+              "protocol": "https",
+              "host": [
+                "{{wiki_domain}}"
+              ],
+              "path": [
+                "w",
+                "api.php"
+              ],
+              "query": [
+                { "key": "action", "value": "query" },
+                { "key": "list", "value": "geosearch" },
+                { "key": "gscoord", "value": "{{latitude}}|{{longitude}}" },
+                { "key": "gsradius", "value": "{{radius_meters}}" },
+                { "key": "gslimit", "value": "{{result_limit}}" },
+                { "key": "gsnamespace", "value": "0" },
+                { "key": "format", "value": "json" },
+                { "key": "formatversion", "value": "2" }
+              ]
+            },
+            "description": "Finds article pages near the selected latitude and longitude."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "5. Edit-Risk Score",
+      "description": "Revert Risk prediction for a selected revision.",
+      "item": [
+        {
+          "name": "Lift Wing Revert Risk",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"rev_id\": {{revision_id}},\n  \"lang\": \"{{language_code}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": "https://api.wikimedia.org/service/lw/inference/v1/models/revertrisk-language-agnostic:predict",
+            "description": "Returns the probability that a revision may be reverted. Run 'Get latest revision' first. Treat the result as supporting evidence, not proof that an edit is bad."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "6. Wikidata",
+      "description": "Structured facts and language links for a Wikipedia article.",
+      "item": [
+        {
+          "name": "Get Wikidata item for a Wikipedia page",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "https://www.wikidata.org/w/api.php?action=wbgetentities&sites={{wikidata_site}}&titles={{page_title}}&props=info%7Csitelinks%7Clabels%7Cclaims&languages={{language_code}}&format=json&formatversion=2",
+              "protocol": "https",
+              "host": [
+                "www",
+                "wikidata",
+                "org"
+              ],
+              "path": [
+                "w",
+                "api.php"
+              ],
+              "query": [
+                { "key": "action", "value": "wbgetentities" },
+                { "key": "sites", "value": "{{wikidata_site}}" },
+                { "key": "titles", "value": "{{page_title}}" },
+                { "key": "props", "value": "info|sitelinks|labels|claims" },
+                { "key": "languages", "value": "{{language_code}}" },
+                { "key": "format", "value": "json" },
+                { "key": "formatversion", "value": "2" }
+              ]
+            },
+            "description": "Returns the Wikidata item, language links, labels, coordinates, country, and other structured facts connected to the page."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "7. XML Dumps",
+      "description": "Whole-wiki XML dump discovery and download. A page title is not required.",
+      "item": [
+        {
+          "name": "Get latest dump manifest",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () { pm.response.to.have.status(200); });",
+                  "const data = pm.response.json();",
+                  "const files = [];",
+                  "Object.values(data.jobs || {}).forEach(function (job) {",
+                  "  Object.keys(job.files || {}).forEach(function (name) {",
+                  "    if (/pages-meta-history.*\\.bz2$/.test(name)) files.push(name);",
+                  "  });",
+                  "});",
+                  "pm.test('History XML files are listed', function () { pm.expect(files.length).to.be.above(0); });",
+                  "if (files.length) pm.collectionVariables.set('xml_dump_file', files[0]);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "https://dumps.wikimedia.org/{{wiki_db}}/latest/dumpstatus.json",
+            "description": "Lists the files in the latest whole-wiki dump. The test script selects the first pages-meta-history XML shard and saves its filename as xml_dump_file. Large wikis are split into multiple shards."
+          },
+          "response": []
+        },
+        {
+          "name": "Download selected XML history shard",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "https://dumps.wikimedia.org/{{wiki_db}}/latest/{{xml_dump_file}}",
+            "description": "Downloads the XML history shard selected by the manifest request. In Postman, use Send and Download because the file can be very large. Run 'Get latest dump manifest' first. Download every listed history shard to process the complete wiki."
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "user_agent",
+      "value": "WikiPulse/0.1 (your-email@example.com)",
+      "type": "string"
+    },
+    {
+      "key": "replay_since",
+      "value": "2026-09-13T00:00:00Z",
+      "type": "string"
+    },
+    {
+      "key": "wiki_domain",
+      "value": "en.wikipedia.org",
+      "type": "string"
+    },
+    {
+      "key": "wiki_db",
+      "value": "enwiki",
+      "type": "string"
+    },
+    {
+      "key": "analytics_project",
+      "value": "en.wikipedia.org",
+      "type": "string"
+    },
+    {
+      "key": "wikidata_site",
+      "value": "enwiki",
+      "type": "string"
+    },
+    {
+      "key": "language_code",
+      "value": "en",
+      "type": "string"
+    },
+    {
+      "key": "page_title",
+      "value": "Earth",
+      "type": "string"
+    },
+    {
+      "key": "start_date",
+      "value": "20260101",
+      "type": "string"
+    },
+    {
+      "key": "end_date",
+      "value": "20260131",
+      "type": "string"
+    },
+    {
+      "key": "aggregate_start_date",
+      "value": "20260301",
+      "type": "string"
+    },
+    {
+      "key": "aggregate_end_date",
+      "value": "20260831",
+      "type": "string"
+    },
+    {
+      "key": "editor_end_date",
+      "value": "20260901",
+      "type": "string"
+    },
+    {
+      "key": "year",
+      "value": "2026",
+      "type": "string"
+    },
+    {
+      "key": "month",
+      "value": "01",
+      "type": "string"
+    },
+    {
+      "key": "editor_activity_level",
+      "value": "1..4-edits",
+      "type": "string"
+    },
+    {
+      "key": "result_limit",
+      "value": "10",
+      "type": "string"
+    },
+    {
+      "key": "revision_id",
+      "value": "1215916855",
+      "type": "string"
+    },
+    {
+      "key": "from_revision_id",
+      "value": "847170467",
+      "type": "string"
+    },
+    {
+      "key": "to_revision_id",
+      "value": "851733941",
+      "type": "string"
+    },
+    {
+      "key": "latitude",
+      "value": "48.8584",
+      "type": "string"
+    },
+    {
+      "key": "longitude",
+      "value": "2.2945",
+      "type": "string"
+    },
+    {
+      "key": "radius_meters",
+      "value": "1000",
+      "type": "string"
+    },
+    {
+      "key": "xml_dump_file",
+      "value": "",
+      "type": "string"
+    }
+  ]
+}
