@@ -3,6 +3,33 @@
 WikiPulse studies unusual changes in Wikipedia editing activity: edit bursts,
 reversions, editor participation, content churn, and bot activity.
 
+## Run the local stack
+
+Start your Docker-compatible container engine, configure a real
+`WIKIMEDIA_USER_AGENT` contact in `.env`, then run:
+
+```sh
+./run-local.sh
+```
+
+This bootstraps Python dependencies, starts Kafka, creates the topic, and launches
+the collector, Spark raw ingestion, five-minute/hourly measurements, and the
+[local dashboard](http://127.0.0.1:8080). Choose either duration in the dashboard. The default live preview shows provisional
+counts immediately; select finalized windows for watermark-complete results.
+Use Java 17 and Python 3.12. Spark runs locally; no separate Spark cluster is needed.
+
+Press Ctrl+C to stop the stack. Saved data and checkpoints are retained; a Kafka
+broker that was already running is left running. Service logs are in `logs/local/`.
+Use `./run-local.sh --check` for prerequisite checks or `--port 8081` for another port.
+See [the local runbook](docs/week2.md#one-command-local-startup) for first-run timing
+and historical baseline setup.
+
+## Week 2
+
+Spark historical baselines, checkpointed streaming page windows, and a local live
+activity viewer are implemented. See [Week 2 architecture and runbook](docs/week2.md)
+for setup, commands, feature definitions, and validation. Week 2 uses no pandas.
+
 ## Implemented so far
 
 - `enwiki_collect_recentchanges.py`: English Wikipedia recent-change collection
@@ -29,7 +56,7 @@ python3 enwiki_collect_revisions.py --help
 ```
 
 Spark analysis requires PySpark and a compatible Java runtime. The notebook also
-imports pandas and matplotlib. There is no dependency manifest yet.
+imports pandas and matplotlib. Dependencies are pinned in `requirements.txt`.
 Run analysis from the repository root with the expected source file available:
 
 ```sh
@@ -60,10 +87,10 @@ Their existing internal folder structure and relative links were preserved.
 
 ## Remaining work
 
-The repository is a collection and batch-analysis prototype. The planned Kafka
-and Spark streaming pipeline, live dashboards, pageview joins, risk-model
+The repository includes collection, batch analysis, and Week 2 streaming measurements. The Week 2 Kafka/Spark measurement pipeline and local activity display are
+implemented. Broader dashboards, pageview joins, risk-model
 integration, related-page graph, and geospatial views are not implemented here.
-No automated test suite or dependency manifest is present. Burst and controversy
+Week 2 integration tests are in `tests/test_page_measurements.py`. Burst and controversy
 scores are exploratory heuristics, not validated detection models; the script
 and notebook also use different minimum edit thresholds for controversy scoring.
 

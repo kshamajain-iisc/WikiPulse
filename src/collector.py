@@ -4,18 +4,24 @@ import logging
 import os
 import signal
 import time
-from datetime import datetime, timezone
 
 import requests
-from confluent_kafka import Producer
 from dotenv import load_dotenv
+
+try:
+    from .kafka_common import (
+        KAFKA_SERVERS, KAFKA_TOPIC, build_envelope, configure_logging,
+        create_producer, get_event_id, is_valid_edit,
+    )
+except ImportError:  # Support python src/collector.py as well as python -m.
+    from kafka_common import (
+        KAFKA_SERVERS, KAFKA_TOPIC, build_envelope, configure_logging,
+        create_producer, get_event_id, is_valid_edit,
+    )
 
 load_dotenv()
 
-KAFKA_SERVERS = os.getenv(
-    "KAFKA_BOOTSTRAP_SERVERS", "localhost:9092"
-)
-TOPIC = os.getenv("KAFKA_TOPIC", "wiki.raw.edits")
+TOPIC = KAFKA_TOPIC
 STREAM_URL = os.getenv(
     "WIKIMEDIA_STREAM_URL",
     "https://stream.wikimedia.org/v2/stream/recentchange",
@@ -25,10 +31,7 @@ STATS_INTERVAL = int(
     os.getenv("STATS_INTERVAL_SECONDS", "30")
 )
 
-logging.basicConfig(
-    level=os.getenv("LOG_LEVEL", "INFO").upper(),
-    format="%(asctime)s %(levelname)s %(message)s",
-)
+configure_logging()
 logger = logging.getLogger("wikipulse.collector")
 
 running = True
@@ -51,124 +54,6 @@ def stop_handler(signum, frame):
 
 signal.signal(signal.SIGINT, stop_handler)
 signal.signal(signal.SIGTERM, stop_handler)
-
-
-def create_producer():
-    return Producer({
-        "bootstrap.servers": KAFKA_SERVERS,
-        "client.id": "wikipulse-live-collector",
-        "acks": "all",
-        "enable.idempotence": True,
-        "retries": 10,
-        "compression.type": "snappy",
-        "linger.ms": 20,
-        "message.timeout.ms": 120000,
-    })
-
-
-def get_event_id(event):
-    # Wikimedia recentchange ID is scoped to a wiki.
-    wiki = event.get("wiki")
-    change_id = event.get("id")
-
-    if not wiki or change_id is None:
-        return None
-
-    return f"{wiki}:{change_id}"
-
-
-
-
-def is_valid_edit(event):
-    if not isinstance(event, dict):
-        return False
-
-    # Only English Wikipedia
-    if event.get("wiki") != "enwiki":
-        return False
-
-    # Only edit events
-    if event.get("type") != "edit":
-        return False
-
-    # Only main article namespace
-    if event.get("namespace") != 0:
-        return False
-
-    # Stable event identifier
-    if not get_event_id(event):
-        return False
-
-    # Required article information
-    if not event.get("title"):
-        return False
-
-    # Required event timestamp
-    if event.get("timestamp") is None:
-        return False
-
-    return True
-
-    if not isinstance(event, dict):
-        logger.warning("Invalid: event is not a dictionary")
-        return False
-
-    if event.get("wiki") != "enwiki":
-        return False
-
-    if event.get("type") != "edit":
-        return False
-
-    if event.get("namespace") != 0:
-        return False
-
-    checks = {
-        "event_id": get_event_id(event),
-        "title": event.get("title"),
-        "page_id": event.get("page_id"),
-        "timestamp": event.get("timestamp"),
-    }
-
-    missing = [
-        name for name, value in checks.items()
-        if value is None or value == ""
-    ]
-
-    if missing:
-        logger.warning(
-            "Rejected event: missing=%s available_keys=%s",
-            missing,
-            list(event.keys()),
-        )
-        return False
-
-    return True
-
-    if not isinstance(event, dict):
-        return False
-
-    if event.get("wiki") != "enwiki":
-        return False
-
-    if event.get("type") != "edit":
-        return False
-
-    if event.get("namespace") != 0:
-        return False
-
-    if not get_event_id(event):
-        return False
-
-    if not event.get("title"):
-        return False
-
-    # if not event.get("page_id"):
-    #     return False
-
-    if event.get("timestamp") is None:
-        return False
-
-    return True
 
 
 def delivery_callback(error, message):
@@ -195,16 +80,7 @@ def print_stats():
 def publish_event(producer, event):
     event_id = get_event_id(event)
 
-    record = {
-        "event_id": event_id,
-        "event_time": datetime.fromtimestamp(
-            event["timestamp"], tz=timezone.utc
-        ).isoformat(),
-        "ingested_at": datetime.now(
-            timezone.utc
-        ).isoformat(),
-        "raw_event": event,
-    }
+    record = build_envelope(event)
 
     payload = json.dumps(
         record, ensure_ascii=False
@@ -255,7 +131,7 @@ def process_event(producer, event):
         stats["invalid"] += 1
         return
 
-    publish_event(producer, event)
+    return publish_event(producer, event)
 
 
 def stream_events(producer):
@@ -308,7 +184,9 @@ def stream_events(producer):
                                 event = json.loads(
                                     "\n".join(data_lines)
                                 )
-                                process_event(producer, event)
+                                published = process_event(producer, event)
+                                if published is False:
+                                    raise RuntimeError("Kafka enqueue failed; reconnecting without advancing cursor")
 
                                 # Resume only after processing
                                 # and enqueueing the event.

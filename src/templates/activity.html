@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>WikiPulse · Live activity</title>
+  <style>
+    body { font: 16px system-ui; margin: 3rem; background: #101b2a; color: #edf5ff; }
+    table { border-collapse: collapse; width: 100%; }
+    td, th { text-align: left; padding: .8rem; border-bottom: 1px solid #35475d; }
+    small { color: #aac4df; }
+  </style>
+</head>
+<body data-duration="{{DURATION}}" data-view="{{VIEW}}">
+  <h1>WikiPulse · Live page activity</h1>
+  <label for="duration">Window duration</label>
+  <select id="duration">
+    <option value="5m">Five minutes</option>
+    <option value="1h">One hour</option>
+  </select>
+  <label for="view">Results</label>
+  <select id="view">
+    <option value="live">Live preview (provisional)</option>
+    <option value="finalized">Finalized windows</option>
+  </select>
+  <p id="status">Loading…</p>
+  <small>
+    UTC windows. Live preview counts are provisional; finalized counts include the event-time delay. Editors are approximate. Ratios compare equal-length historical windows.
+    Missing sizes are excluded from byte totals; coverage is shown.
+  </small>
+  <table>
+    <thead>
+      <tr>
+        <th>Page</th><th>Window end (UTC)</th><th>Edits</th><th>Human</th>
+        <th>Editors ≈</th><th>Bot %</th><th>Gross bytes</th>
+        <th>Size coverage</th><th>Human / history</th>
+      </tr>
+    </thead>
+    <tbody id="rows"></tbody>
+  </table>
+  <script>
+    const durationSelector = document.getElementById('duration');
+    const viewSelector = document.getElementById('view');
+    durationSelector.value = document.body.dataset.duration;
+    viewSelector.value = document.body.dataset.view;
+    function selectView() {
+      // A page navigation cancels the previous refresh loop and selects a view.
+      window.location.search = '?duration=' + durationSelector.value + '&view=' + viewSelector.value;
+    }
+    durationSelector.addEventListener('change', selectView);
+    viewSelector.addEventListener('change', selectView);
+
+    function renderActivity(rows) {
+      const tableBody = document.getElementById('rows');
+      tableBody.replaceChildren();
+
+      for (const activity of rows) {
+        const values = [
+          activity.title,
+          activity.window_end,
+          activity.edits_total,
+          activity.edits_human,
+          activity.distinct_human_editors,
+          (100 * activity.bot_ratio).toFixed(1),
+          activity.gross_bytes ?? 'Unknown',
+          (100 * activity.size_coverage).toFixed(0) + '%',
+          activity.human_edit_ratio == null
+            ? 'No baseline'
+            : activity.human_edit_ratio.toFixed(2),
+        ];
+        const row = document.createElement('tr');
+        for (const value of values) {
+          const cell = document.createElement('td');
+          // Wikipedia titles are external input; render them as text, never HTML.
+          cell.textContent = value;
+          row.appendChild(cell);
+        }
+        tableBody.appendChild(row);
+      }
+    }
+
+    async function refresh() {
+      try {
+        const response = await fetch('/api/activity?duration=' + durationSelector.value + '&view=' + viewSelector.value);
+        const activity = await response.json();
+        document.getElementById('status').textContent = activity.status;
+        renderActivity(activity.rows);
+      } catch (error) {
+        document.getElementById('status').textContent = 'Refresh failed: ' + error.message;
+      } finally {
+        // Schedule after completion so slow Spark queries do not overlap refreshes.
+        setTimeout(refresh, 10000);
+      }
+    }
+
+    refresh();
+  </script>
+</body>
+</html>
