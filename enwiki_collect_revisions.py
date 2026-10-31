@@ -32,7 +32,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 # ---- configuration ---------------------------------------------------------
-USER_AGENT = "WikiPulse/0.1 (your-email@example.com)"   # <- put your real contact email
+USER_AGENT = "WikiPulse/1.0 (Senthil Raj K; mailto:senthilrajk@iisc.ac.in)"
 DEFAULT_START = "2026-09-15T00:00:00Z"
 DEFAULT_END = "2026-09-15T06:00:00Z"
 API = "https://en.wikipedia.org/w/api.php"
