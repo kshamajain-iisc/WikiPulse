@@ -1,8 +1,8 @@
-# WikiPulse — Implementation Review: Activities Completed, File Roles & Rationale (Milestones 1 & 4)
+# WikiPulse — Implementation Review: Activities Completed, File Roles & Rationale (Milestones 1, 4 & 5)
 
 **Project:** WikiPulse — Real-Time Detection and Analysis of Wikipedia Knowledge Shifts  
 **Course:** DA231o — Data Engineering at Scale (IISc)  
-**Date:** October 31, 2026  
+**Date:** November 1, 2026  
 
 ---
 
@@ -38,6 +38,16 @@
   - **RDD vs. DataFrame Benchmark:** On 7 days (`747,156` mainspace edits), DataFrame ran in **1.34s** vs. RDD in **2.716s** (**2.03x–2.82x speedup**).
   - **Dashboard Query Latency Benchmark:** Raw 1-day `JSONL.gz` top-20 query took **2.154s**, whereas Stored Parquet Rankings took **0.148s** and 46-day Churn Series took **0.153s** (**~14.5x faster**, meeting the $< 2.0\text{s}$ Proposal target).
 
+### Activity 6 — Milestone 5 Implementation, Deep-Dive Audit & End-to-End Retest (*Repeatable Alerts Detected & Evaluated*)
+- **What was done:** Built, audited, and executed all three Milestone 5 modules in [`Repo/src/anomaly/`](file:///Users/senthilrajk/Downloads/002_IISc_DSBA/Data%20Engineering%20at%20Scale/Project-WikiPulse/Repo/src/anomaly) (`window_features.py`, `scoring_sparkml.py`, `evaluate_alerts.py`).
+- **Deep-Dive Gaps Identified & Resolved:**
+  1. **Per-Window Editor Surge Scaling:** Replaced linear `1/288` 5-minute editor division (which clamped pages with $< 57.6$ daily editors to `0.20`) with calibrated session-clustered window scaling (`1/18` for `5m`, `1/6` for `1h`, `0.08` std floor), differentiating quiet (`0.15` editors/day), moderate (`1.2` editors/day), and hyperactive (`48.0` editors/day) pages.
+  2. **Additive `feature_contributions` Parity:** Applied low-surge (`velocity_zscore < 2.5`) and bot-only (`edits_human == 0`) dampening directly to individual feature contribution weights so `sum(feature_contributions.values()) == historical_score` on every row.
+  3. **`CONFIRMED_NEWS` vs. `EDIT_WAR_CONTROVERSY` Disambiguation:** Refined the secondary edit-war rule to require `revert_ratio >= 0.22` and `rewriting_bytes >= 0.5 * gross_bytes` so high-volume collaborative breaking news with low revert rates (e.g., `RJ Mitte`, `69` edits, `26` editors, `5.8%` reverts) is classified as `CONFIRMED_NEWS` rather than `EDIT_WAR_CONTROVERSY`.
+  4. **Detector C (Spark ML) Selectivity Calibration:** Added multi-editor / major-rewrite guardrails (`spark_ml_score >= 68.0`) to eliminate 1-editor minor-edit false triggers, reducing total union alerts from `10,134` to `3,564` high-confidence alerts (`Detector C precision = 99.7%`).
+  5. **Reason String Sign Formatting & Bot-Only Explanation:** Fixed negative $z$-score string formatting (`+-0.1` $\rightarrow$ `-0.1`) and added explicit `"Bot-only activity"` explanations when `edits_human == 0`.
+  6. **Cross-Language `alert_id` SHA-256 Parity:** Verified `39/39` (100%) byte-for-byte parity between Spark SQL `F.sha2` `alert_id` and Python `compute_deterministic_alert_id()`.
+
 ---
 
 ## 2. File-by-File Inventory: Role, What It Does & Why It Is Needed
@@ -64,7 +74,17 @@
 
 ---
 
-### 2.3 Documentation & Planning Files
+### 2.3 Anomaly Detection, Explainable Scoring & Spark ML (Milestone 5)
+
+| File | Role | What It Does | Why It Is Needed |
+| :--- | :--- | :--- | :--- |
+| [Repo/src/anomaly/window_features.py](file:///Users/senthilrajk/Downloads/002_IISc_DSBA/Data%20Engineering%20at%20Scale/Project-WikiPulse/Repo/src/anomaly/window_features.py) | Milestone 5.1: 5m & 1h Window Feature Extraction | • Aggregates `curated/rc_events` (`2026-10-06 .. 2026-10-30`) into **5-minute (`5m`)** and **1-hour (`1h`)** page activity windows conforming to `PAGE_WINDOW_SCHEMA`.<br/>• Joins with `curated/page_baselines` to compute `velocity_zscore`, `editor_surge_ratio`, `churn_zscore`, `rewriting_bytes`, and `consensus_factor`.<br/>• Writes `curated/page_windows_5m` (`350,192` rows) and `curated/page_windows_1h` (`189,517` rows). | • Provides the unified window feature layer required by Detectors A, B, and C as well as Dashboard 1 (`Live & Replay Alert Radar`). |
+| [Repo/src/anomaly/scoring_sparkml.py](file:///Users/senthilrajk/Downloads/002_IISc_DSBA/Data%20Engineering%20at%20Scale/Project-WikiPulse/Repo/src/anomaly/scoring_sparkml.py) | Milestone 5.2: Multi-Detector Scoring & Spark ML | • Runs **Detector A (Fixed Threshold)**, **Detector B (Explainable Historical Score `0–100` with $\ge 2$ `reasons` and additive `feature_contributions`)**, and **Detector C (Spark ML `VectorAssembler` $\rightarrow$ `StandardScaler` $\rightarrow$ `KMeans(k=8)` + `RandomForestClassifier(numTrees=35)`)**.<br/>• Joins delayed daily pageviews (`pageview_corroborated`) and classifies alerts into `CONFIRMED_NEWS`, `BREAKING_NEWS_CANDIDATE`, `EDIT_WAR_CONTROVERSY`, and `MAJOR_REWRITE`.<br/>• Writes `curated/alerts` (`3,564` rows) with deterministic SHA-256 `alert_id`. | • Solves the core gap where fixed rules fail on quiet/hyperactive pages and misclassify revert wars as breaking news.<br/>• Satisfies Proposal Feature Metric #1 ($\ge 2$ human-readable reasons per alert) and compares interpretable scoring against Spark ML. |
+| [Repo/src/anomaly/evaluate_alerts.py](file:///Users/senthilrajk/Downloads/002_IISc_DSBA/Data%20Engineering%20at%20Scale/Project-WikiPulse/Repo/src/anomaly/evaluate_alerts.py) | Milestone 5.3: Synthetic Injection, False-Alert & End-to-End Audit | • Injects 5 positive knowledge-shift patterns + 2 negative controls and verifies **100% recall (`5/5`)**, **100% additive contribution parity**, and **0 false triggers**.<br/>• Audits false-alert rates across Detectors A (`68.8%`), B (`10.7%`), and C (`0.3%`).<br/>• Runs replay idempotency verification (`30%` duplicate event injection $\rightarrow$ `0` duplicate alerts) and validates all 7 curated tables through Milestone 5. | • Directly satisfies **Proposal Experiment Plan #2 & #4**, **Feature Metric #1 & #2**, and **Performance Metric #4 & #6**. |
+
+---
+
+### 2.4 Documentation & Planning Files
 
 | File | Role | What It Contains |
 | :--- | :--- | :--- |
@@ -81,13 +101,18 @@
 | `curated/rc_events/` | Partitioned Parquet (`day=YYYY-MM-DD`) | `RAW_EDIT_SCHEMA` (29 cols) | **8,428,021** deduplicated `edit`/`new`/`log` rows across **46 days** (`1,011.43 MB`) |
 | `curated/page_baselines/` | Parquet | `HISTORICAL_BASELINE_SCHEMA` (25 cols) | Per-page daily/hourly moments, `activity_tier`, and Analytics pageview baselines (`2026-09-15 .. 2026-10-05`) |
 | `curated/churn_bot_summary/` | Parquet | Daily $\times$ Namespace rollup (17 cols) | Human registered, Temp/Anon (`~2026-...`), and Bot edits; `bytes_added`, `bytes_deleted`, `net_bytes`, `gross_churn_bytes`, `rewriting_bytes` |
-| `curated/rankings_daily/` | Parquet | Daily top articles with baseline comparison (20 cols) | Ranks articles by both `raw_edit_rank` and `baseline_surge_rank` (`daily_velocity_zscore`) |
+| `curated/rankings_daily/` | Parquet | Daily top articles with baseline comparison (24 cols) | **14,870** rows ranking articles by `raw_edit_rank` and `baseline_surge_rank` (`daily_velocity_zscore`) |
+| `curated/page_windows_5m/` | Parquet | `PAGE_WINDOW_SCHEMA` (23 cols) | **350,192** 5-minute windows (`252,724` mainspace `ns=0`) across `2026-10-06 .. 2026-10-30` |
+| `curated/page_windows_1h/` | Parquet | `PAGE_WINDOW_SCHEMA` (23 cols) | **189,517** 1-hour windows (`126,328` mainspace `ns=0`) across `2026-10-06 .. 2026-10-30` |
+| `curated/alerts/` | Parquet | `ALERT_SCHEMA` (26 cols) | **3,564** multi-detector alerts (**100%** with $\ge 2$ reasons; query latency **0.088s**) |
 | `curated/benchmarks/ingestion_summary.json` | JSON | Ingestion completeness & storage size | `14,398,713` raw $\rightarrow$ `8,428,021` accepted (**100% valid retention**); `977.74 MB` JSONL.gz vs `1,011.43 MB` Parquet |
 | `curated/benchmarks/milestone4_benchmarks.json` | JSON | Manual audit, RDD vs. DF, and query latency | • Manual audit: **100% exact match**<br/>• DF (`1.34s`) vs. RDD (`2.716s`): **2.03x–2.82x speedup**<br/>• Stored Parquet query time: **0.148s – 0.153s** ($< 2.0\text{s}$ target met) |
+| `curated/benchmarks/milestone5_scoring_summary.json` | JSON | Multi-detector alert counts & Spark ML metrics | • Detector A (`885`), Detector B (`2,583`), Detector C (`2,083`), Consensus (`509`)<br/>• KMeans Silhouette = **0.4229**, RF top feature = `f_distinct_editors` (`0.3438`) |
+| `curated/benchmarks/milestone5_evaluation.json` | JSON | Synthetic injection, false-alert & replay idempotency | • Synthetic recall: **5/5 (100%)** for Detector B vs **3/5 (60%)** for Detector A<br/>• False-alert rate reduced from **68.8%** (Detector A) to **10.7%** (Detector B) and **0.3%** (Detector C)<br/>• Replay idempotency: **0 duplicate alerts** (`39/39` hash parity) |
 
 ---
 
-## 4. Quick Reference: Commands to Run Milestones 1 & 4
+## 4. Quick Reference: Commands to Run Milestones 1, 4 & 5
 
 ```bash
 # 1. Verify Milestone 1 APIs, Shared Schemas & Normalization
@@ -101,18 +126,23 @@
 
 # 4. Milestone 4.3: Build Historical Rankings, Churn/Bot Rollups & Run Benchmarks
 .venv/bin/python3 Repo/src/historical/rankings_benchmark.py
+
+# 5. Milestone 5.1: Build 5-Minute & 1-Hour Page Window Features
+.venv/bin/python3 Repo/src/anomaly/window_features.py
+
+# 6. Milestone 5.2: Run Detectors A, B & Spark ML (Detector C) -> curated/alerts
+.venv/bin/python3 Repo/src/anomaly/scoring_sparkml.py
+
+# 7. Milestone 5.3: Run Synthetic Injection, False-Alert & End-to-End Lake Audit
+.venv/bin/python3 Repo/src/anomaly/evaluate_alerts.py
 ```
 
 ---
 
-## 5. Next Steps: Milestones 5 & 6
+## 5. Next Steps: Milestone 6
 
-With **Milestone 1** and **Milestone 4** complete and verified on the full 46-day dataset, the next modules to build are:
-1. **Milestone 5 (`Repo/src/anomaly/`):**
-   - `window_features.py` (5-min & 1-hr windowed activity joined with `page_baselines`)
-   - `scoring_sparkml.py` (Detector A: Fixed Threshold vs. Detector B: Explainable Historical Score with $\ge 2$ reasons vs. Detector C: Spark ML `KMeans` & `RandomForestClassifier`)
-   - `evaluate_alerts.py` (Synthetic knowledge-shift pattern injection, false-alert audit, and replay idempotency verification)
-2. **Milestone 6 (`Repo/src/enrichment/` & `Repo/src/dashboard/`):**
+With **Milestones 1, 4, and 5** complete and re-verified end-to-end, the remaining milestone is:
+1. **Milestone 6 (`Repo/src/enrichment/` & `Repo/src/dashboard/`):**
    - `graph_and_diffs.py` (MediaWiki `links`/`backlinks` spillover graph + `action=compare` diffs with $\ge 90\%$ usable check)
    - `geospatial_map.py` (Wikipedia coordinates + Wikidata `P625`/`P276`/`P17` fallback with source & quality tags; no editor IPs)
    - `revert_risk_monitor.py` (Lift Wing Revert Risk ML scoring + heuristic fallback $\ge 95\%$ check, matched against actual later reverts across thresholds)
