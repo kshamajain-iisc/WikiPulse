@@ -327,3 +327,11 @@ The local stack was restarted against Colima. The live API returned HTTP 200 wit
 100 displayed pages and edit counts recovered from retained raw messages. All 17
 regression tests passed, including absent page IDs, title-based baseline lookup,
 recovery of stored rejected records, provisional previews, and stream restart.
+
+
+## Dash frontend
+
+`run-local.sh` now serves the separate `dashboards` package at port 8080. The original
+HTML viewer is retained as a compatibility utility. See [dashboard architecture and
+source contracts](../dashboards/README.md) for the five proposal-aligned screens,
+optional producers, refresh semantics, and data path overrides.

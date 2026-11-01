@@ -1,0 +1,1 @@
+"""Proposal-aligned dashboard screens."""

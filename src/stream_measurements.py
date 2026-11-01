@@ -120,7 +120,21 @@ def main() -> None:
         if args.ready_file is not None:
             args.ready_file.parent.mkdir(parents=True, exist_ok=True)
             args.ready_file.write_text(str(query.id))
-        query.awaitTermination()
+        if args.ready_file is None:
+            query.awaitTermination()
+        else:
+            # Persist real progress for the engineering dashboard. Atomic rename
+            # prevents the web process from reading a partially written snapshot.
+            progress_path = args.ready_file.with_suffix(".progress.json")
+            while query.isActive:
+                query.awaitTermination(5)
+                progress = query.lastProgress
+                if progress is not None:
+                    temporary = progress_path.with_suffix(".tmp")
+                    temporary.write_text(json.dumps(progress))
+                    temporary.replace(progress_path)
+            if query.exception() is not None:
+                raise RuntimeError(str(query.exception()))
     except KeyboardInterrupt:
         # Ctrl+C is a normal shutdown; the checkpoint remains available to resume.
         pass

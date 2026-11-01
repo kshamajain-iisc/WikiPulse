@@ -3,3 +3,5 @@ requests==2.32.3
 python-dotenv==1.0.1
 pyspark==3.5.6
 pyarrow==17.0.0
+dash==4.5.0
+plotly==7.1.0

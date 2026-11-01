@@ -14,7 +14,7 @@ Start your Docker-compatible container engine, configure a real
 
 This bootstraps Python dependencies, starts Kafka, creates the topic, and launches
 the collector, Spark raw ingestion, five-minute/hourly measurements, and the
-[local dashboard](http://127.0.0.1:8080). Choose either duration in the dashboard. The default live preview shows provisional
+[Dash + Plotly dashboards](http://127.0.0.1:8080). Choose either duration in the dashboard. The default live preview shows provisional
 counts immediately; select finalized windows for watermark-complete results.
 Use Java 17 and Python 3.12. Spark runs locally; no separate Spark cluster is needed.
 
@@ -23,6 +23,12 @@ broker that was already running is left running. Service logs are in `logs/local
 Use `./run-local.sh --check` for prerequisite checks or `--port 8081` for another port.
 See [the local runbook](docs/week2.md#one-command-local-startup) for first-run timing
 and historical baseline setup.
+
+## Dashboards
+
+The frontend lives in the separate [`dashboards/`](dashboards/README.md) package,
+with five connected screens based on the proposal. Spark queries remain in `src/`.
+The local launcher serves the Dash application at port 8080.
 
 ## Week 2
 

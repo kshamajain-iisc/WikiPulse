@@ -229,7 +229,7 @@ def main() -> int:
                 "--partitions", "3", "--replication-factor", "1",
             ])
 
-            processes.start("dashboard", "src.activity_dashboard", "--port", str(args.port))
+            processes.start("dashboard", "dashboards.app", "--port", str(args.port))
             processes.wait_for("the dashboard server", lambda: dashboard_ready(args.port))
             print(f"Dashboard: http://127.0.0.1:{args.port}/", flush=True)
             processes.start("collector", "src.collector")
