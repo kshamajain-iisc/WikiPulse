@@ -50,13 +50,16 @@ def register_callbacks(app, service):
         Input("location", "pathname"), Input("location", "search"), Input("refresh", "n_intervals"),
         Input("duration", "value"), Input("view", "value"), Input("article", "value"),
         Input("dates", "start_date"), Input("dates", "end_date"),
+        running=[(Output("refresh-busy", "data"), True, False)],
     )
     def refresh_page(pathname, search, tick, duration, view, title, start, end):
         return render_dashboard(service, pathname or "/", search, duration, view, title, start, end)
 
-    @app.callback(Output("refresh", "disabled"), Input("pause", "value"))
-    def pause_refresh(value):
-        return "pause" in (value or [])
+    @app.callback(Output("refresh", "disabled"), Input("pause", "value"), Input("refresh-busy", "data"))
+    def pause_refresh(value, busy):
+        # A slow query must finish before the timer can request another snapshot.
+        # Keep the user's pause choice when the running callback finishes.
+        return bool(busy) or "pause" in (value or [])
 
     # One href update avoids a race between separate pathname/search updates.
     @app.callback(Output("location", "href"),

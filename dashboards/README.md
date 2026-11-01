@@ -73,6 +73,12 @@ read path; later detector/enrichment/experiment producers still need to emit the
 respective tables. Exact distinct-editor tracking across an entire horizon is not
 claimed: the ledger shows the peak approximate human-editor count per window.
 
+Week 3 now supplies the detector and alert tables. `run-local.sh` starts a detector
+for each finalized duration. The feed shows up to 200 recent alerts for the selected
+duration, independently of provisional activity previews. Article investigation
+shows component points, confidence, available weight, and missing evidence.
+See [the Week 3 runbook](../docs/week3.md) for score semantics and offline demos.
+
 ## Data paths and table contracts
 
 Defaults:
@@ -80,7 +86,9 @@ Defaults:
 - Raw: `RAW_PARQUET_PATH` from `.env` (normally `data/raw/wikipedia_edits`).
 - Live: `data/live_activity/windows_5m` and `windows_1h`.
 - History: `data/week2/historical/edits`, `baselines_5m`, `baselines_1h`.
-- Curated: `data/curated`, using the schemas in `src/models/schemas.py`.
+- Curated: `data/curated`. Week 3 alerts use the runtime contract in
+  `src/detection/scoring.py`, documented in `docs/week3.md`; other optional tables
+  use the milestone schemas in `src/models/schemas.py`.
 - Runtime: `data/run/*.progress.json` written by the updated Spark jobs.
 
 Alternate table roots can be selected explicitly:

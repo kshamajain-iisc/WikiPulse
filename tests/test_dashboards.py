@@ -13,6 +13,20 @@ from dashboards.data_service import DashboardDataService
 
 
 class DashboardPresentationTests(unittest.TestCase):
+    def test_refresh_timer_waits_for_query_and_respects_pause(self):
+        client = create_app(Mock()).server.test_client()
+        for paused, busy, expected in (([], False, False), ([], True, True),
+                                       (["pause"], True, True), (["pause"], False, True)):
+            response = client.post("/_dash-update-component", json={
+                "output": "refresh.disabled",
+                "outputs": {"id": "refresh", "property": "disabled"},
+                "inputs": [{"id": "pause", "property": "value", "value": paused},
+                           {"id": "refresh-busy", "property": "data", "value": busy}],
+                "state": [], "changedPropIds": ["refresh-busy.data"],
+            })
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.json["response"]["refresh"]["disabled"], expected)
+
     def setUp(self):
         self.service = Mock()
         self.service.load.return_value = {

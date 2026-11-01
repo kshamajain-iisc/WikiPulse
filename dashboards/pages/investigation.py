@@ -16,6 +16,12 @@ def render(data):
         html.A("Open on Wikipedia ↗", href="https://en.wikipedia.org/wiki/" + quote(title or "Main_Page"),
                target="_blank", rel="noopener noreferrer", className="article-link"),
         metric_row(data.get("metrics", {})),
+        panel("Knowledge-shift evidence", "Finalized windows · component points use the proposal weights before normalization",
+              table(data.get("alerts", []), [("Window", "window_start"), ("Score / 100", "historical_score"),
+                    ("Confidence", "confidence"), ("Edits / 35", "activity_points"),
+                    ("Editors / 20", "editor_points"), ("Content / 20", "content_points"),
+                    ("Reverts / 10", "revert_points"), ("Available weight", "available_weight"),
+                    ("Missing evidence", "missing_evidence"), ("Reasons", "reasons")])),
         html.Div([
             panel("Activity over time", "Selected article · UTC window starts",
                   graph(charts.activity_timeline(data.get("timeline", [])))),

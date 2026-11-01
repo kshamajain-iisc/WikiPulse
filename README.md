@@ -36,6 +36,20 @@ Spark historical baselines, checkpointed streaming page windows, and a local liv
 activity viewer are implemented. See [Week 2 architecture and runbook](docs/week2.md)
 for setup, commands, feature definitions, and validation. Week 2 uses no pandas.
 
+## Week 3
+
+Explainable knowledge-shift detection, a Kafka alert topic, historical replay,
+controlled test patterns, and an initial Spark ML comparison are implemented.
+The local launcher starts both finalized-window detectors, and the dashboard
+shows alert reasons and component points. See [Week 3 implementation and architecture](docs/week3.md)
+for the file inventory, score definitions, recovery guarantees, and commands.
+
+Run a repeatable offline experiment without Kafka or Wikimedia access:
+
+```sh
+.venv/bin/python -m src.replay.demo --output data/experiments/week3-demo --with-ml
+```
+
 ## Implemented so far
 
 - `enwiki_collect_recentchanges.py`: English Wikipedia recent-change collection
@@ -93,10 +107,12 @@ Their existing internal folder structure and relative links were preserved.
 
 ## Remaining work
 
-The repository includes collection, batch analysis, and Week 2 streaming measurements. The Week 2 Kafka/Spark measurement pipeline and local activity display are
-implemented. Broader dashboards, pageview joins, risk-model
-integration, related-page graph, and geospatial views are not implemented here.
-Week 2 integration tests are in `tests/test_page_measurements.py`. Burst and controversy
+The repository includes collection, batch analysis, streaming measurements,
+explainable detection, replay, offline ML comparison, and five dashboard screens.
+Pageview joins, revision-risk model integration, related-page graph production,
+and geographic enrichment remain future work. The frontend supports their
+optional tables. Week 2 integration tests are in `tests/test_page_measurements.py`;
+Week 3 tests are in `tests/test_detection.py` and `tests/test_replay.py`. Burst and controversy
 scores are exploratory heuristics, not validated detection models; the script
 and notebook also use different minimum edit thresholds for controversy scoring.
 

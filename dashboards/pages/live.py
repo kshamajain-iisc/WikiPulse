@@ -25,11 +25,12 @@ def render(data):
             panel("Knowledge churn", "Gross byte movement and net content change",
                   graph(charts.bytes_timeline(data.get("timeline", [])))),
         ], className="chart-grid"),
-        panel("Knowledge-shift feed", "Scored alerts from the detection pipeline",
+        panel("Knowledge-shift feed", "Finalized alerts for the selected duration · recent 200 records · independent of live preview",
               table(alerts, [("Article", "title"), ("Type", "alert_type"),
-                             ("Historical score", "historical_score"), ("Reasons", "reasons")], True)
-              if alerts else notice("Detection pipeline not connected yet",
-                  "These are activity measurements. No alert score or confirmed-news label is inferred from edit counts.")),
+                             ("Historical score", "historical_score"), ("Confidence", "confidence"),
+                             ("Reasons", "reasons")], True)
+              if alerts else notice("No finalized alerts yet",
+                  "Alerts appear after windows finalize. A page without history can produce a low-confidence activity candidate.")),
         panel("Activity ledger", "Top 100 observed articles · totals above include the full selected scope",
               table(data.get("rankings", []), [("Article", "title"), ("Edits", "edits"),
                     ("Human", "human"), ("Bot", "bots"), ("Gross bytes", "gross_bytes"),

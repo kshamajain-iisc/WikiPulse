@@ -256,6 +256,14 @@ def main() -> int:
                     "--duration", duration, "--ready-file", str(ready_file),
                 )
                 processes.wait_for(f"the {duration} measurement query", ready_file.is_file)
+            # One detector per finalized duration, each with its own checkpoint.
+            # The detector also creates the alert topic when starting standalone.
+            for duration in ("5m", "1h"):
+                ready_file = lock_directory / f"detection-{duration}.ready"
+                ready_file.unlink(missing_ok=True)
+                processes.start(f"detection-{duration}", "src.detection", "stream",
+                                "--duration", duration, "--ready-file", str(ready_file))
+                processes.wait_for(f"the {duration} alert query", ready_file.is_file)
             print(
                 "All services launched. Select 5m or 1h on the dashboard. "
                 "Finalized results require later events to advance the watermark.\n"

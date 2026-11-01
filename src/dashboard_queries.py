@@ -61,6 +61,18 @@ class DashboardQueries:
             frame = frame.orderBy(F.desc("window_start"))
         return records(frame, 200)
 
+    def alerts(self, duration: str, title: str | None = None) -> list[dict]:
+        """Read finalized alerts for the chosen duration, independently of previews."""
+        frame = self.table("alerts")
+        if frame is None:
+            return []
+        frame = frame.filter(F.col("window_duration") == ("5 minutes" if duration == "5m" else "1 hour"))
+        if title:
+            frame = frame.filter(F.col("title") == title)
+        # A consumer/recovery can deliver an alert again. Identity is stable for
+        # one page-window and score version; the display shows it only once.
+        return records(frame.dropDuplicates(["alert_id"]).orderBy(F.desc("window_start")), 200)
+
     def recent_edits(self, duration: str) -> tuple[DataFrame | None, str | None]:
         """Restrict preview reads by ingestion date and latest observed event time."""
         if not has_table(self.paths.raw):

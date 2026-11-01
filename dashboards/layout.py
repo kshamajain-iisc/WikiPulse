@@ -21,6 +21,7 @@ def shell():
     return html.Div([
         dcc.Location(id="location", refresh="callback-nav"),
         dcc.Interval(id="refresh", interval=30000, n_intervals=0),
+        dcc.Store(id="refresh-busy", data=False),
         html.A("Skip to dashboard", href="#page-body", className="skip-link"),
         html.Aside([
             html.Div([html.Span("W", className="brand-mark"),
@@ -50,8 +51,9 @@ def shell():
                         display_format="DD MMM YYYY", start_date_placeholder_text="Start", end_date_placeholder_text="End")], className="control dates-control"),
                     dcc.Checklist(id="pause", options=[{"label": "Pause refresh", "value": "pause"}], value=[], className="pause-control"),
                 ], className="controls"),
-                html.Div("Connecting to measured activity…", id="source-status", className="source-status", role="status"),
-                dcc.Loading(html.Div(id="page-body", tabIndex=-1), type="circle", color="#16836f", delay_show=300),
+                html.Div("Loading measured activity with Spark; the first query may take a minute…", id="source-status", className="source-status", role="status"),
+                dcc.Loading(html.Div(id="page-body", tabIndex=-1), type="circle", color="#16836f", delay_show=300,
+                            overlay_style={"visibility": "visible", "opacity": 0.7}),
                 html.Footer("WIKIPULSE  /  DATA ENGINEERING AT SCALE  ·  Evidence first. All times UTC."),
             ], className="workspace"),
         ], className="main"),

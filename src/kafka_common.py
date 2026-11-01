@@ -11,6 +11,22 @@ from dotenv import load_dotenv
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 KAFKA_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
 KAFKA_TOPIC = os.getenv("KAFKA_TOPIC", "wiki.raw.edits")
+KAFKA_ALERT_TOPIC = os.getenv("KAFKA_ALERT_TOPIC", "wiki.shift.candidates")
+
+
+def ensure_topic(topic: str) -> None:
+    """Create a topic explicitly; Compose disables broker auto-creation."""
+    from confluent_kafka import KafkaException
+    from confluent_kafka.admin import AdminClient, NewTopic
+
+    admin = AdminClient({"bootstrap.servers": KAFKA_SERVERS})
+    future = admin.create_topics([NewTopic(topic, num_partitions=3, replication_factor=1)])[topic]
+    try:
+        future.result(timeout=30)
+    except KafkaException as error:
+        from confluent_kafka import KafkaError
+        if error.args[0].code() != KafkaError.TOPIC_ALREADY_EXISTS:
+            raise
 
 
 def configure_logging():

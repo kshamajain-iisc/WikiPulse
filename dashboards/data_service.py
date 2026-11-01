@@ -54,13 +54,13 @@ class DashboardDataService:
         if page == "system":
             return self.system_health()
         data = self.queries.activity(duration, view, title if page == "investigation" else None)
-        data["alerts"] = self.queries.optional_records("alerts", title if page == "investigation" else None)
+        data["alerts"] = self.queries.alerts(duration, title if page == "investigation" else None)
         if page == "investigation":
             # When no article was selected, investigate the leading observed page.
             selected = title or next(iter(data.get("rankings", [])), {}).get("title")
             if selected and not title:
                 data = self.queries.activity(duration, view, selected)
-                data["alerts"] = self.queries.optional_records("alerts", selected)
+                data["alerts"] = self.queries.alerts(duration, selected)
             data["articles"] = self.queries.article_titles(duration, view)
             data["selected"] = selected
             data["diffs"] = self.queries.optional_records("revision_diffs", selected) if selected else []
@@ -70,7 +70,7 @@ class DashboardDataService:
     def system_health(self):
         paths = self.queries.paths
         progress = []
-        for name in ("bronze", "windows-5m", "windows-1h"):
+        for name in ("bronze", "windows-5m", "windows-1h", "detection-5m", "detection-1h"):
             path = paths.runtime / f"{name}.progress.json"
             if path.is_file():
                 row = json.loads(path.read_text())

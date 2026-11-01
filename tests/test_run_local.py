@@ -37,7 +37,7 @@ class LocalLauncherTests(unittest.TestCase):
         self.assertEqual(result, 0)
         self.assertEqual(
             [call.args[0] for call in supervisor.start.call_args_list],
-            ["dashboard", "collector", "bronze", "windows-5m", "windows-1h"],
+            ["dashboard", "collector", "bronze", "windows-5m", "windows-1h", "detection-5m", "detection-1h"],
         )
         supervisor.stop.assert_called_once()
         self.assertEqual(commands[-1].args[0], ["docker", "compose", "stop", "kafka"])
