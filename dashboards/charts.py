@@ -147,3 +147,46 @@ def storage(rows):
         return empty()
     return style(go.Figure(go.Bar(x=[r["layer"] for r in rows], y=[r["megabytes"] for r in rows],
                                  marker_color=[GREEN, BLUE, AMBER], name="Parquet MB")))
+
+
+def scaling_curve(rows):
+    if not rows:
+        return empty("Strong scaling measurements appear after running Milestone 7 benchmarks")
+    x = [f"{r.get('workers_cores', 1)} cores" for r in rows]
+    figure = go.Figure()
+    figure.add_trace(go.Bar(
+        x=x,
+        y=[r.get("runtime_sec", 0) for r in rows],
+        name="Runtime (s)",
+        marker_color=BLUE,
+    ))
+    figure.add_trace(go.Scatter(
+        x=x,
+        y=[r.get("speedup_vs_1core", 1.0) for r in rows],
+        name="Speedup (x)",
+        mode="lines+markers",
+        line=dict(color=GREEN, width=2.5),
+        marker=dict(size=7),
+    ))
+    return style(figure)
+
+
+def recovery_and_load(rows):
+    if not rows:
+        return empty("Streaming load measurements appear after running Milestone 7 benchmarks")
+    x = [str(r.get("replay_speed_multiplier", "")) for r in rows]
+    figure = go.Figure()
+    figure.add_trace(go.Bar(
+        x=x,
+        y=[r.get("target_input_rate_rows_per_sec", 0) for r in rows],
+        name="Input rate (rows/s)",
+        marker_color=AMBER,
+    ))
+    figure.add_trace(go.Bar(
+        x=x,
+        y=[r.get("measured_processing_rate_rows_per_sec", 0) for r in rows],
+        name="Processing capacity (rows/s)",
+        marker_color=GREEN,
+    ))
+    figure.update_layout(barmode="group")
+    return style(figure)

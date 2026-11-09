@@ -1,0 +1,301 @@
+{
+  "prefilter_efficiency": {
+    "total_mainspace_edits": 5170879,
+    "heuristic_candidate_edits": 1322673,
+    "candidates_scored_with_liftwing": 120,
+    "prefilter_reduction_pct": 74.42
+  },
+  "coverage_metrics": {
+    "total_revisions_scored": 120,
+    "liftwing_ml_direct_count": 111,
+    "liftwing_ml_direct_pct": 92.5,
+    "valid_probability_or_fallback_count": 120,
+    "valid_probability_or_fallback_pct": 100.0,
+    "proposal_target_ge_95_pct_met": true,
+    "api_status_breakdown": {
+      "success": 111,
+      "cached": 0,
+      "fallback_offline": 0,
+      "unsupported": 9
+    }
+  },
+  "experiment_5_threshold_calibration": {
+    "liftwing_ml_curve": [
+      {
+        "threshold": 0.2,
+        "tp": 54,
+        "fp": 56,
+        "fn": 0,
+        "tn": 1,
+        "precision_pct": 49.09,
+        "recall_pct": 100.0,
+        "f1_pct": 65.85,
+        "accuracy_pct": 49.55,
+        "false_positive_rate_pct": 98.25
+      },
+      {
+        "threshold": 0.35,
+        "tp": 54,
+        "fp": 52,
+        "fn": 0,
+        "tn": 5,
+        "precision_pct": 50.94,
+        "recall_pct": 100.0,
+        "f1_pct": 67.5,
+        "accuracy_pct": 53.15,
+        "false_positive_rate_pct": 91.23
+      },
+      {
+        "threshold": 0.5,
+        "tp": 50,
+        "fp": 41,
+        "fn": 4,
+        "tn": 16,
+        "precision_pct": 54.95,
+        "recall_pct": 92.59,
+        "f1_pct": 68.97,
+        "accuracy_pct": 59.46,
+        "false_positive_rate_pct": 71.93
+      },
+      {
+        "threshold": 0.65,
+        "tp": 48,
+        "fp": 28,
+        "fn": 6,
+        "tn": 29,
+        "precision_pct": 63.16,
+        "recall_pct": 88.89,
+        "f1_pct": 73.85,
+        "accuracy_pct": 69.37,
+        "false_positive_rate_pct": 49.12
+      },
+      {
+        "threshold": 0.8,
+        "tp": 41,
+        "fp": 12,
+        "fn": 13,
+        "tn": 45,
+        "precision_pct": 77.36,
+        "recall_pct": 75.93,
+        "f1_pct": 76.64,
+        "accuracy_pct": 77.48,
+        "false_positive_rate_pct": 21.05
+      },
+      {
+        "threshold": 0.9,
+        "tp": 37,
+        "fp": 8,
+        "fn": 17,
+        "tn": 49,
+        "precision_pct": 82.22,
+        "recall_pct": 68.52,
+        "f1_pct": 74.75,
+        "accuracy_pct": 77.48,
+        "false_positive_rate_pct": 14.04
+      }
+    ],
+    "heuristic_risk_curve": [
+      {
+        "threshold": 0.2,
+        "tp": 60,
+        "fp": 60,
+        "fn": 0,
+        "tn": 0,
+        "precision_pct": 50.0,
+        "recall_pct": 100.0,
+        "f1_pct": 66.67,
+        "accuracy_pct": 50.0,
+        "false_positive_rate_pct": 100.0
+      },
+      {
+        "threshold": 0.35,
+        "tp": 60,
+        "fp": 55,
+        "fn": 0,
+        "tn": 5,
+        "precision_pct": 52.17,
+        "recall_pct": 100.0,
+        "f1_pct": 68.57,
+        "accuracy_pct": 54.17,
+        "false_positive_rate_pct": 91.67
+      },
+      {
+        "threshold": 0.5,
+        "tp": 45,
+        "fp": 22,
+        "fn": 15,
+        "tn": 38,
+        "precision_pct": 67.16,
+        "recall_pct": 75.0,
+        "f1_pct": 70.87,
+        "accuracy_pct": 69.17,
+        "false_positive_rate_pct": 36.67
+      },
+      {
+        "threshold": 0.65,
+        "tp": 30,
+        "fp": 4,
+        "fn": 30,
+        "tn": 56,
+        "precision_pct": 88.24,
+        "recall_pct": 50.0,
+        "f1_pct": 63.83,
+        "accuracy_pct": 71.67,
+        "false_positive_rate_pct": 6.67
+      },
+      {
+        "threshold": 0.8,
+        "tp": 19,
+        "fp": 1,
+        "fn": 41,
+        "tn": 59,
+        "precision_pct": 95.0,
+        "recall_pct": 31.67,
+        "f1_pct": 47.5,
+        "accuracy_pct": 65.0,
+        "false_positive_rate_pct": 1.67
+      },
+      {
+        "threshold": 0.9,
+        "tp": 3,
+        "fp": 0,
+        "fn": 57,
+        "tn": 60,
+        "precision_pct": 100.0,
+        "recall_pct": 5.0,
+        "f1_pct": 9.52,
+        "accuracy_pct": 52.5,
+        "false_positive_rate_pct": 0.0
+      }
+    ],
+    "composite_risk_curve": [
+      {
+        "threshold": 0.2,
+        "tp": 60,
+        "fp": 59,
+        "fn": 0,
+        "tn": 1,
+        "precision_pct": 50.42,
+        "recall_pct": 100.0,
+        "f1_pct": 67.04,
+        "accuracy_pct": 50.83,
+        "false_positive_rate_pct": 98.33
+      },
+      {
+        "threshold": 0.35,
+        "tp": 60,
+        "fp": 59,
+        "fn": 0,
+        "tn": 1,
+        "precision_pct": 50.42,
+        "recall_pct": 100.0,
+        "f1_pct": 67.04,
+        "accuracy_pct": 50.83,
+        "false_positive_rate_pct": 98.33
+      },
+      {
+        "threshold": 0.5,
+        "tp": 55,
+        "fp": 43,
+        "fn": 5,
+        "tn": 17,
+        "precision_pct": 56.12,
+        "recall_pct": 91.67,
+        "f1_pct": 69.62,
+        "accuracy_pct": 60.0,
+        "false_positive_rate_pct": 71.67
+      },
+      {
+        "threshold": 0.65,
+        "tp": 50,
+        "fp": 20,
+        "fn": 10,
+        "tn": 40,
+        "precision_pct": 71.43,
+        "recall_pct": 83.33,
+        "f1_pct": 76.92,
+        "accuracy_pct": 75.0,
+        "false_positive_rate_pct": 33.33
+      },
+      {
+        "threshold": 0.8,
+        "tp": 36,
+        "fp": 9,
+        "fn": 24,
+        "tn": 51,
+        "precision_pct": 80.0,
+        "recall_pct": 60.0,
+        "f1_pct": 68.57,
+        "accuracy_pct": 72.5,
+        "false_positive_rate_pct": 15.0
+      },
+      {
+        "threshold": 0.9,
+        "tp": 19,
+        "fp": 1,
+        "fn": 41,
+        "tn": 59,
+        "precision_pct": 95.0,
+        "recall_pct": 31.67,
+        "f1_pct": 47.5,
+        "accuracy_pct": 65.0,
+        "false_positive_rate_pct": 1.67
+      }
+    ],
+    "optimal_ml_threshold": {
+      "threshold": 0.8,
+      "tp": 41,
+      "fp": 12,
+      "fn": 13,
+      "tn": 45,
+      "precision_pct": 77.36,
+      "recall_pct": 75.93,
+      "f1_pct": 76.64,
+      "accuracy_pct": 77.48,
+      "false_positive_rate_pct": 21.05
+    },
+    "static_080_ml_threshold": {
+      "threshold": 0.8,
+      "tp": 41,
+      "fp": 12,
+      "fn": 13,
+      "tn": 45,
+      "precision_pct": 77.36,
+      "recall_pct": 75.93,
+      "f1_pct": 76.64,
+      "accuracy_pct": 77.48,
+      "false_positive_rate_pct": 21.05
+    },
+    "optimal_composite_threshold": {
+      "threshold": 0.65,
+      "tp": 50,
+      "fp": 20,
+      "fn": 10,
+      "tn": 40,
+      "precision_pct": 71.43,
+      "recall_pct": 83.33,
+      "f1_pct": 76.92,
+      "accuracy_pct": 75.0,
+      "false_positive_rate_pct": 33.33
+    },
+    "calibration_finding": "For composite_risk, static tau=0.80 achieves 80.0% precision but only 60.0% recall (F1=68.57%), whereas calibrated tau=0.65 improves F1 to 76.92% (Recall=83.33%, Precision=71.43%), outperforming both standalone Lift Wing ML (peak F1=76.64% at tau=0.8) and standalone heuristic rules (peak F1=70.87%)."
+  },
+  "mttr_breakdown": {
+    "overall": {
+      "count": 60,
+      "mean_sec": 1388.9,
+      "median_sec": 66.5
+    },
+    "bot_reverters": {
+      "count": 1,
+      "mean_sec": 1566,
+      "median_sec": 1566
+    },
+    "human_reverters": {
+      "count": 59,
+      "mean_sec": 1385.9,
+      "median_sec": 66
+    }
+  },
+  "runtime_sec": 104.19
+}

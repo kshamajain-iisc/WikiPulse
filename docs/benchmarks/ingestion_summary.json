@@ -1,0 +1,9 @@
+{
+  "total_raw_events": 14398713,
+  "valid_non_categorize_raw_events": 8428021,
+  "curated_deduplicated_events": 8428021,
+  "distinct_days": 46,
+  "raw_jsonl_gz_mb": 977.74,
+  "curated_parquet_mb": 1011.43,
+  "ingestion_runtime_sec": 122.84
+}

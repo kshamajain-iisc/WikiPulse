@@ -1,0 +1,9 @@
+{
+  "evaluation_start": "2026-10-06",
+  "evaluation_end": "2026-10-30",
+  "windows_5m_total": 350192,
+  "windows_5m_ns0": 252724,
+  "windows_1h_total": 189517,
+  "windows_1h_ns0": 126328,
+  "runtime_sec": 51.66
+}

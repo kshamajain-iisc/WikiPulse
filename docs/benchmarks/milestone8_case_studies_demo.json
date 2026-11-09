@@ -1,0 +1,342 @@
+{
+  "case_studies_count": 4,
+  "benchmark_files_expected": 11,
+  "benchmark_files_present": 11,
+  "all_benchmark_files_ready": true,
+  "case_studies": [
+    {
+      "case_number": 1,
+      "alert_type": "CONFIRMED_NEWS",
+      "title": "Navi Pillay",
+      "pageid": 6041935,
+      "window_start": "2026-10-09T14:30:00Z",
+      "window_duration": "1h",
+      "edits_human": 34,
+      "distinct_human_editors": 24,
+      "gross_bytes": 6534,
+      "net_bytes": 1486,
+      "rewriting_bytes": 5048,
+      "revert_ratio": 0.0,
+      "velocity_zscore": 226.6,
+      "detector_a_fixed_flag": true,
+      "detector_b_historical_score": 98.5,
+      "detector_c_spark_ml_score": 95.4,
+      "pageview_corroborated": true,
+      "feature_contributions": {
+        "byte_churn": 20.0,
+        "edit_velocity": 35.0,
+        "editor_diversity": 25.0,
+        "consensus_or_dispute": 8.5,
+        "pageview_corroboration": 10.0
+      },
+      "reasons": [
+        "Edit velocity surge: 34 human edits in 1h (z-score +226.6 vs page baseline)",
+        "Contributor arrival: 24 distinct human editors active (68.6x baseline diversity)",
+        "Content churn: 6534 gross bytes moved (net +1486 B, rewriting 5048 B)",
+        "Constructive consensus: 0 reverts across 34 human edits (100% retention)",
+        "Delayed pageview corroboration: 47.88x daily baseline pageviews"
+      ],
+      "spillover_neighbors": [
+        {
+          "neighbor_title": "Henri B. Kagan",
+          "edge_type": "outlink",
+          "co_edited_in_window": true,
+          "target_edits_in_window": 41
+        },
+        {
+          "neighbor_title": "Henri B. Kagan",
+          "edge_type": "backlink",
+          "co_edited_in_window": true,
+          "target_edits_in_window": 41
+        },
+        {
+          "neighbor_title": "Latin tag",
+          "edge_type": "outlink",
+          "co_edited_in_window": true,
+          "target_edits_in_window": 20
+        },
+        {
+          "neighbor_title": "1941",
+          "edge_type": "backlink",
+          "co_edited_in_window": true,
+          "target_edits_in_window": 20
+        }
+      ],
+      "sample_revision_diff": {
+        "from_revid": 1379341094,
+        "to_revid": 1379341608,
+        "user": "Vixissimi",
+        "bytes_delta": 6977,
+        "added_snippet": "+ '''Navanethem''' \"'''Navi'''\" '''Pillay''' ({{nee|'''Naidoo'''}}; born 23 September 1941)<ref>{{Cite web | title=Navi Pillay 2010 - Nelson Mandela University ",
+        "comment": "Rescuing 39 sources and tagging 0 as dead.) #IABot (v2.0.9.6"
+      },
+      "geospatial_resolution": {
+        "has_coordinates": true,
+        "lat": -29.0,
+        "lon": 24.0,
+        "country": "South Africa",
+        "location_source": "wikidata_p276_p17",
+        "location_quality": "country_centroid"
+      }
+    },
+    {
+      "case_number": 2,
+      "alert_type": "BREAKING_NEWS_CANDIDATE",
+      "title": "Katie Zacharia",
+      "pageid": 84459972,
+      "window_start": "2026-10-10T01:30:00Z",
+      "window_duration": "1h",
+      "edits_human": 18,
+      "distinct_human_editors": 6,
+      "gross_bytes": 4947,
+      "net_bytes": -107,
+      "rewriting_bytes": 4840,
+      "revert_ratio": 0.0,
+      "velocity_zscore": 119.93,
+      "detector_a_fixed_flag": true,
+      "detector_b_historical_score": 87.57,
+      "detector_c_spark_ml_score": 80.88,
+      "pageview_corroborated": false,
+      "feature_contributions": {
+        "byte_churn": 19.07,
+        "edit_velocity": 35.0,
+        "editor_diversity": 25.0,
+        "consensus_or_dispute": 8.5,
+        "pageview_corroboration": 0.0
+      },
+      "reasons": [
+        "Edit velocity surge: 18 human edits in 1h (z-score +119.9 vs page baseline)",
+        "Contributor arrival: 6 distinct human editors active (17.1x baseline diversity)",
+        "Content churn: 4947 gross bytes moved (net -107 B, rewriting 4840 B)",
+        "Constructive consensus: 0 reverts across 18 human edits (100% retention)"
+      ],
+      "spillover_neighbors": [
+        {
+          "neighbor_title": "Kimberly Guilfoyle",
+          "edge_type": "backlink",
+          "co_edited_in_window": true,
+          "target_edits_in_window": 7
+        },
+        {
+          "neighbor_title": "Karoline Leavitt",
+          "edge_type": "backlink",
+          "co_edited_in_window": true,
+          "target_edits_in_window": 2
+        },
+        {
+          "neighbor_title": "Andrew K. Benton",
+          "edge_type": "outlink",
+          "co_edited_in_window": true,
+          "target_edits_in_window": 2
+        },
+        {
+          "neighbor_title": "White House Press Secretary",
+          "edge_type": "backlink",
+          "co_edited_in_window": true,
+          "target_edits_in_window": 2
+        }
+      ],
+      "sample_revision_diff": {
+        "from_revid": 1379946128,
+        "to_revid": 1379978685,
+        "user": "Vosotros32",
+        "bytes_delta": 2105,
+        "added_snippet": "+ On October 9, 2026, President [[Donald Trump]] named Zacharia as the [[White House Press Secretary|White House secretary]].<ref>{{Cite web |url=https://www.ws",
+        "comment": "CNN, which is listed by Wikipedia as a reliable source, has confirmed the claims made by Legum on Substack."
+      },
+      "geospatial_resolution": {
+        "has_coordinates": true,
+        "lat": 39.82818,
+        "lon": -98.5795,
+        "country": "United States",
+        "location_source": "wikidata_p276_p17",
+        "location_quality": "country_centroid"
+      }
+    },
+    {
+      "case_number": 3,
+      "alert_type": "EDIT_WAR_CONTROVERSY",
+      "title": "Hurricane Isaias (2026)",
+      "pageid": 84435257,
+      "window_start": "2026-10-11T17:30:00Z",
+      "window_duration": "1h",
+      "edits_human": 9,
+      "distinct_human_editors": 6,
+      "gross_bytes": 6801,
+      "net_bytes": 27,
+      "rewriting_bytes": 6774,
+      "revert_ratio": 0.8889,
+      "velocity_zscore": 59.93,
+      "detector_a_fixed_flag": false,
+      "detector_b_historical_score": 97.33,
+      "detector_c_spark_ml_score": 79.5,
+      "pageview_corroborated": true,
+      "feature_contributions": {
+        "byte_churn": 20.0,
+        "edit_velocity": 35.0,
+        "editor_diversity": 25.0,
+        "consensus_or_dispute": 10.0,
+        "pageview_corroboration": 7.33
+      },
+      "reasons": [
+        "Edit velocity surge: 9 human edits in 1h (z-score +59.9 vs page baseline)",
+        "Contributor arrival: 6 distinct human editors active (17.1x baseline diversity)",
+        "Content churn: 6801 gross bytes moved (net +27 B, rewriting 6774 B)",
+        "Edit dispute / reversion signal: 8 reverted/rollback edits (88.9% revert ratio)",
+        "Delayed pageview corroboration: 4.28x daily baseline pageviews"
+      ],
+      "spillover_neighbors": [
+        {
+          "neighbor_title": "The Social Reckoning",
+          "edge_type": "backlink",
+          "co_edited_in_window": true,
+          "target_edits_in_window": 16
+        },
+        {
+          "neighbor_title": "Extreme wind warning",
+          "edge_type": "backlink",
+          "co_edited_in_window": true,
+          "target_edits_in_window": 10
+        },
+        {
+          "neighbor_title": "Tropical cyclones in 2026",
+          "edge_type": "backlink",
+          "co_edited_in_window": true,
+          "target_edits_in_window": 7
+        },
+        {
+          "neighbor_title": "2026 Atlantic hurricane season",
+          "edge_type": "backlink",
+          "co_edited_in_window": true,
+          "target_edits_in_window": 7
+        }
+      ],
+      "sample_revision_diff": {
+        "from_revid": 1379353643,
+        "to_revid": 1379354025,
+        "user": "Quxyz",
+        "bytes_delta": -1887,
+        "added_snippet": "+ On October&nbsp;7, [[Tropical cyclone warnings and watches|hurricane watches]] were issued for the coasts of [[Alabama]], [[Mississippi]], and the [[Florida p",
+        "comment": "Fix warnings"
+      },
+      "geospatial_resolution": {
+        "has_coordinates": true,
+        "lat": 25.0,
+        "lon": -90.0,
+        "country": "Mexico",
+        "location_source": "wikidata_p276_p17",
+        "location_quality": "related_entity_point"
+      }
+    },
+    {
+      "case_number": 4,
+      "alert_type": "MAJOR_REWRITE",
+      "title": "Mike Ditka",
+      "pageid": 297288,
+      "window_start": "2026-10-10T01:30:00Z",
+      "window_duration": "1h",
+      "edits_human": 15,
+      "distinct_human_editors": 2,
+      "gross_bytes": 6007,
+      "net_bytes": 5525,
+      "rewriting_bytes": 482,
+      "revert_ratio": 0.0,
+      "velocity_zscore": 99.93,
+      "detector_a_fixed_flag": false,
+      "detector_b_historical_score": 84.79,
+      "detector_c_spark_ml_score": 64.15,
+      "pageview_corroborated": true,
+      "feature_contributions": {
+        "byte_churn": 19.72,
+        "edit_velocity": 35.0,
+        "editor_diversity": 13.57,
+        "consensus_or_dispute": 6.5,
+        "pageview_corroboration": 10.0
+      },
+      "reasons": [
+        "Edit velocity surge: 15 human edits in 1h (z-score +99.9 vs page baseline)",
+        "Contributor arrival: 2 distinct human editors active (5.7x baseline diversity)",
+        "Content churn: 6007 gross bytes moved (net +5525 B, rewriting 482 B)",
+        "Constructive consensus: 0 reverts across 15 human edits (100% retention)",
+        "Delayed pageview corroboration: 78.45x daily baseline pageviews"
+      ],
+      "spillover_neighbors": [
+        {
+          "neighbor_title": "Drew Brees",
+          "edge_type": "outlink",
+          "co_edited_in_window": true,
+          "target_edits_in_window": 16
+        },
+        {
+          "neighbor_title": "Drew Brees",
+          "edge_type": "backlink",
+          "co_edited_in_window": true,
+          "target_edits_in_window": 16
+        },
+        {
+          "neighbor_title": "Ed Reed",
+          "edge_type": "outlink",
+          "co_edited_in_window": true,
+          "target_edits_in_window": 10
+        },
+        {
+          "neighbor_title": "Deion Sanders",
+          "edge_type": "outlink",
+          "co_edited_in_window": true,
+          "target_edits_in_window": 10
+        }
+      ],
+      "sample_revision_diff": {
+        "from_revid": 1379405645,
+        "to_revid": 1379406507,
+        "user": "TDKR Chicago 101",
+        "bytes_delta": 2347,
+        "added_snippet": "+ Ditka died on October 9, 2026, at the age of 86.<ref name=ESPNobit >{{Cite web|title=Legendary coach, Hall of Fame TE Mike Ditka dies at age 86|url=https://ww",
+        "comment": "/* Health and death */"
+      },
+      "geospatial_resolution": {
+        "has_coordinates": true,
+        "lat": 39.82818,
+        "lon": -98.5795,
+        "country": "United States",
+        "location_source": "wikidata_p276_p17",
+        "location_quality": "country_centroid"
+      }
+    }
+  ],
+  "liftwing_reverted_revision_highlights": [
+    {
+      "revid": 1381767506,
+      "title": "Tornado outbreak sequence of June 14\u201319, 2023",
+      "user": "~2026-56801-46",
+      "is_anon": true,
+      "delta": -118496,
+      "ml_revert_risk": 0.9981,
+      "composite_risk": 0.965,
+      "time_to_revert_sec": 221,
+      "reverter_is_bot": false
+    },
+    {
+      "revid": 1381772234,
+      "title": "Tornado outbreak sequence of June 14\u201319, 2023",
+      "user": "~2026-56619-23",
+      "is_anon": true,
+      "delta": -118474,
+      "ml_revert_risk": 0.9979,
+      "composite_risk": 0.9649,
+      "time_to_revert_sec": 21,
+      "reverter_is_bot": false
+    },
+    {
+      "revid": 1380401660,
+      "title": "Three-point lighting",
+      "user": "~2026-55261-71",
+      "is_anon": true,
+      "delta": -3594,
+      "ml_revert_risk": 0.9975,
+      "composite_risk": 0.9646,
+      "time_to_revert_sec": 38,
+      "reverter_is_bot": false
+    }
+  ]
+}

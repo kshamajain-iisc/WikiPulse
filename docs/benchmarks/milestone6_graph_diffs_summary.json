@@ -1,0 +1,23 @@
+{
+  "graph_enrichment": {
+    "alerted_pages_enriched": 36,
+    "total_graph_edges": 607,
+    "co_edited_spillover_edges": 195,
+    "outlink_edges": 212,
+    "backlink_edges": 395
+  },
+  "revision_diff_enrichment": {
+    "total_revisions_compared": 100,
+    "usable_change_data_count": 100,
+    "usable_change_data_pct": 100.0,
+    "live_compare_api_success_pct": 90.0,
+    "compare_status_breakdown": {
+      "success": 90,
+      "empty_diff": 0,
+      "missing_rev": 10,
+      "api_error": 0
+    },
+    "proposal_target_ge_90_pct_met": true
+  },
+  "runtime_sec": 100.47
+}

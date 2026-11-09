@@ -1,0 +1,32 @@
+{
+  "manual_churn_audit": {
+    "sample_file": "rc_2026-09-16.jsonl.gz",
+    "sample_size": 2000,
+    "manual_totals": {
+      "edits": 2000,
+      "human_edits": 1286,
+      "bot_edits": 714,
+      "bytes_added": 1434650,
+      "bytes_deleted": 589627,
+      "net_bytes": 845023,
+      "gross_churn_bytes": 2024277,
+      "rewriting_bytes": 1179254
+    },
+    "spark_exact_match": true
+  },
+  "rdd_vs_dataframe_benchmark": {
+    "days_evaluated": 7,
+    "input_rows": 747156,
+    "dataframe_runtime_sec": 1.34,
+    "rdd_runtime_sec": 2.716,
+    "speedup_factor_df_over_rdd": 2.03,
+    "top_page_verified": "Michael Jackson Video Vanguard Award",
+    "top_page_gross_bytes": 2021561
+  },
+  "query_latency_benchmark": {
+    "raw_jsonl_gz_1day_top20_sec": 2.154,
+    "stored_parquet_rankings_top20_sec": 0.148,
+    "stored_parquet_46day_churn_series_sec": 0.153,
+    "meets_under_2s_target": true
+  }
+}

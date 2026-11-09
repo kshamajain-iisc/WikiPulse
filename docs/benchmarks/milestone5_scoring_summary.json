@@ -1,0 +1,48 @@
+{
+  "total_alerts_union": 3564,
+  "detector_a_fixed_count": 885,
+  "detector_b_historical_count": 2583,
+  "detector_c_spark_ml_count": 2083,
+  "all_three_consensus_count": 509,
+  "alerts_with_ge2_reasons": 3564,
+  "explainability_rate_pct": 100.0,
+  "pageview_corroborated_count": 103,
+  "alert_type_breakdown": {
+    "CONFIRMED_NEWS": 90,
+    "BREAKING_NEWS_CANDIDATE": 1161,
+    "MAJOR_REWRITE": 188,
+    "EDIT_WAR_CONTROVERSY": 2125
+  },
+  "window_duration_breakdown": {
+    "5m": 1158,
+    "1h": 2406
+  },
+  "spark_ml_metrics": {
+    "kmeans_k": 8,
+    "normal_baseline_cluster_id": 2,
+    "cluster_sizes": {
+      "2": 118482,
+      "1": 111144,
+      "3": 66246,
+      "5": 49373,
+      "0": 26410,
+      "7": 5303,
+      "6": 4197,
+      "4": 1949
+    },
+    "kmeans_silhouette_score": 0.4229,
+    "rf_num_trees": 35,
+    "rf_feature_importances": {
+      "f_edits_human": 0.2246,
+      "f_distinct_editors": 0.3438,
+      "f_log_gross_bytes": 0.1009,
+      "f_log_rewriting_bytes": 0.0328,
+      "f_revert_ratio": 0.0496,
+      "f_bot_share": 0.0001,
+      "f_velocity_z": 0.0677,
+      "f_editor_surge": 0.1806
+    },
+    "ml_pipeline_runtime_sec": 59.71
+  },
+  "total_runtime_sec": 76.06
+}

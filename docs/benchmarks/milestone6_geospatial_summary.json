@@ -1,0 +1,114 @@
+{
+  "total_alert_subjects_evaluated": 160,
+  "located_subjects_count": 121,
+  "unlocated_subjects_count": 39,
+  "located_coverage_pct": 75.62,
+  "location_source_breakdown": {
+    "wikipedia_coord": 29,
+    "wikidata_p625": 5,
+    "wikidata_p276_p17": 87,
+    "none": 39
+  },
+  "location_quality_breakdown": {
+    "exact_point": 34,
+    "related_entity_point": 16,
+    "country_centroid": 71,
+    "unlocated": 39
+  },
+  "unlocated_alerts_preserved_valid": true,
+  "editor_ip_geolocation_used": false,
+  "top_countries_or_regions": [
+    {
+      "country_or_region": "United States",
+      "active_topics": 58,
+      "total_edits_human": 1056,
+      "max_score": 98.5
+    },
+    {
+      "country_or_region": "Canada",
+      "active_topics": 9,
+      "total_edits_human": 334,
+      "max_score": 93.02
+    },
+    {
+      "country_or_region": "United Kingdom",
+      "active_topics": 9,
+      "total_edits_human": 276,
+      "max_score": 90.0
+    },
+    {
+      "country_or_region": "India",
+      "active_topics": 9,
+      "total_edits_human": 187,
+      "max_score": 93.77
+    },
+    {
+      "country_or_region": "Jordan",
+      "active_topics": 2,
+      "total_edits_human": 39,
+      "max_score": 89.84
+    },
+    {
+      "country_or_region": "Ireland",
+      "active_topics": 2,
+      "total_edits_human": 32,
+      "max_score": 95.01
+    },
+    {
+      "country_or_region": "Australia",
+      "active_topics": 2,
+      "total_edits_human": 32,
+      "max_score": 90.0
+    },
+    {
+      "country_or_region": "Mexico",
+      "active_topics": 2,
+      "total_edits_human": 24,
+      "max_score": 97.33
+    },
+    {
+      "country_or_region": "Global / Specified Coordinates",
+      "active_topics": 2,
+      "total_edits_human": 22,
+      "max_score": 90.0
+    },
+    {
+      "country_or_region": "Greece",
+      "active_topics": 2,
+      "total_edits_human": 19,
+      "max_score": 90.0
+    },
+    {
+      "country_or_region": "Spain",
+      "active_topics": 1,
+      "total_edits_human": 48,
+      "max_score": 88.13
+    },
+    {
+      "country_or_region": "Philippines",
+      "active_topics": 1,
+      "total_edits_human": 45,
+      "max_score": 87.66
+    },
+    {
+      "country_or_region": "South Africa",
+      "active_topics": 1,
+      "total_edits_human": 34,
+      "max_score": 98.5
+    },
+    {
+      "country_or_region": "Panama",
+      "active_topics": 1,
+      "total_edits_human": 34,
+      "max_score": 87.43
+    },
+    {
+      "country_or_region": "Poland",
+      "active_topics": 1,
+      "total_edits_human": 30,
+      "max_score": 90.0
+    }
+  ],
+  "alerts_windows_with_location": 702,
+  "runtime_sec": 38.64
+}

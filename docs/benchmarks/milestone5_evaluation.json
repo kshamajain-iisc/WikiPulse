@@ -1,0 +1,360 @@
+{
+  "experiment_2_synthetic_pattern_injection": {
+    "positive_patterns_injected": 5,
+    "negative_controls_injected": 2,
+    "detector_b_positive_recall": "5/5 (100.0%)",
+    "detector_a_positive_recall": "3/5 (60.0%)",
+    "alerts_with_ge2_reasons": "5/5 (100.0%)",
+    "detector_b_negative_control_false_alerts": 0,
+    "pattern_details": [
+      {
+        "pattern_title": "SYNTH_BREAKING_NEWS_SURGE",
+        "expected_positive": true,
+        "expected_alert_type": "CONFIRMED_NEWS",
+        "actual_alert_type": "CONFIRMED_NEWS",
+        "detector_a_fixed_flag": true,
+        "detector_b_historical_flag": true,
+        "historical_score": 96.3,
+        "feature_contributions_sum": 96.3,
+        "velocity_zscore": 174.927,
+        "editor_surge_ratio": 45.0,
+        "edits_human": 14,
+        "distinct_human_editors": 9,
+        "reasons_count": 5,
+        "reasons": [
+          "Edit velocity surge: 14 human edits in 5m (z-score +174.9 vs page baseline)",
+          "Contributor arrival: 9 distinct human editors active (45.0x baseline diversity)",
+          "Content churn: 18900 gross bytes moved (net +18900 B, rewriting 0 B)",
+          "Constructive consensus: 0 reverts across 14 human edits (100% retention)",
+          "Delayed pageview corroboration: 5.67x daily baseline pageviews"
+        ],
+        "feature_contributions": {
+          "byte_churn": 20.0,
+          "edit_velocity": 35.0,
+          "editor_diversity": 25.0,
+          "consensus_or_dispute": 8.5,
+          "pageview_corroboration": 7.8
+        },
+        "passed_verification": true
+      },
+      {
+        "pattern_title": "SYNTH_DEVELOPING_EVENT_BURST",
+        "expected_positive": true,
+        "expected_alert_type": "BREAKING_NEWS_CANDIDATE",
+        "actual_alert_type": "BREAKING_NEWS_CANDIDATE",
+        "detector_a_fixed_flag": true,
+        "detector_b_historical_flag": true,
+        "historical_score": 88.5,
+        "feature_contributions_sum": 88.5,
+        "velocity_zscore": 137.475,
+        "editor_surge_ratio": 35.0,
+        "edits_human": 11,
+        "distinct_human_editors": 7,
+        "reasons_count": 4,
+        "reasons": [
+          "Edit velocity surge: 11 human edits in 5m (z-score +137.5 vs page baseline)",
+          "Contributor arrival: 7 distinct human editors active (35.0x baseline diversity)",
+          "Content churn: 9350 gross bytes moved (net +9350 B, rewriting 0 B)",
+          "Constructive consensus: 0 reverts across 11 human edits (100% retention)"
+        ],
+        "feature_contributions": {
+          "byte_churn": 20.0,
+          "edit_velocity": 35.0,
+          "editor_diversity": 25.0,
+          "consensus_or_dispute": 8.5,
+          "pageview_corroboration": 0.0
+        },
+        "passed_verification": true
+      },
+      {
+        "pattern_title": "SYNTH_EDIT_WAR_CONTROVERSY",
+        "expected_positive": true,
+        "expected_alert_type": "EDIT_WAR_CONTROVERSY",
+        "actual_alert_type": "EDIT_WAR_CONTROVERSY",
+        "detector_a_fixed_flag": true,
+        "detector_b_historical_flag": true,
+        "historical_score": 90.0,
+        "feature_contributions_sum": 90.0,
+        "velocity_zscore": 149.943,
+        "editor_surge_ratio": 25.0,
+        "edits_human": 12,
+        "distinct_human_editors": 5,
+        "reasons_count": 4,
+        "reasons": [
+          "Edit velocity surge: 12 human edits in 5m (z-score +149.9 vs page baseline)",
+          "Contributor arrival: 5 distinct human editors active (25.0x baseline diversity)",
+          "Content churn: 24000 gross bytes moved (net +0 B, rewriting 24000 B)",
+          "Edit dispute / reversion signal: 8 reverted/rollback edits (66.7% revert ratio)"
+        ],
+        "feature_contributions": {
+          "byte_churn": 20.0,
+          "edit_velocity": 35.0,
+          "editor_diversity": 25.0,
+          "consensus_or_dispute": 10.0,
+          "pageview_corroboration": 0.0
+        },
+        "passed_verification": true
+      },
+      {
+        "pattern_title": "SYNTH_MAJOR_REWRITE_EXPANSION",
+        "expected_positive": true,
+        "expected_alert_type": "MAJOR_REWRITE",
+        "actual_alert_type": "MAJOR_REWRITE",
+        "detector_a_fixed_flag": false,
+        "detector_b_historical_flag": true,
+        "historical_score": 75.07,
+        "feature_contributions_sum": 75.07,
+        "velocity_zscore": 59.893,
+        "editor_surge_ratio": 5.714,
+        "edits_human": 9,
+        "distinct_human_editors": 2,
+        "reasons_count": 4,
+        "reasons": [
+          "Edit velocity surge: 9 human edits in 1h (z-score +59.9 vs page baseline)",
+          "Contributor arrival: 2 distinct human editors active (5.7x baseline diversity)",
+          "Content churn: 38700 gross bytes moved (net +38700 B, rewriting 0 B)",
+          "Constructive consensus: 0 reverts across 9 human edits (100% retention)"
+        ],
+        "feature_contributions": {
+          "byte_churn": 20.0,
+          "edit_velocity": 35.0,
+          "editor_diversity": 13.57,
+          "consensus_or_dispute": 6.5,
+          "pageview_corroboration": 0.0
+        },
+        "passed_verification": true
+      },
+      {
+        "pattern_title": "SYNTH_QUIET_PAGE_EMERGING_SHIFT",
+        "expected_positive": true,
+        "expected_alert_type": "BREAKING_NEWS_CANDIDATE",
+        "actual_alert_type": "BREAKING_NEWS_CANDIDATE",
+        "detector_a_fixed_flag": false,
+        "detector_b_historical_flag": true,
+        "historical_score": 87.2,
+        "feature_contributions_sum": 87.2,
+        "velocity_zscore": 62.494,
+        "editor_surge_ratio": 20.0,
+        "edits_human": 5,
+        "distinct_human_editors": 4,
+        "reasons_count": 4,
+        "reasons": [
+          "Edit velocity surge: 5 human edits in 5m (z-score +62.5 vs page baseline)",
+          "Contributor arrival: 4 distinct human editors active (20.0x baseline diversity)",
+          "Content churn: 7250 gross bytes moved (net +7250 B, rewriting 0 B)",
+          "Constructive consensus: 0 reverts across 5 human edits (100% retention)"
+        ],
+        "feature_contributions": {
+          "byte_churn": 20.0,
+          "edit_velocity": 35.0,
+          "editor_diversity": 23.7,
+          "consensus_or_dispute": 8.5,
+          "pageview_corroboration": 0.0
+        },
+        "passed_verification": true
+      },
+      {
+        "pattern_title": "CTRL_ROUTINE_BOT_SWEEP",
+        "expected_positive": false,
+        "expected_alert_type": null,
+        "actual_alert_type": "NONE",
+        "detector_a_fixed_flag": false,
+        "detector_b_historical_flag": false,
+        "historical_score": 0.0,
+        "feature_contributions_sum": 0.0,
+        "velocity_zscore": -0.083,
+        "editor_surge_ratio": 0.0,
+        "edits_human": 0,
+        "distinct_human_editors": 0,
+        "reasons_count": 4,
+        "reasons": [
+          "Bot-only activity: 0 human edits (20 bot edits) in 5m (z-score -0.1 vs page baseline)",
+          "Contributor arrival: 0 distinct human editors active (0.0x baseline diversity)",
+          "Content churn: 900 gross bytes moved (net +900 B, rewriting 0 B)",
+          "Constructive consensus: 0 reverts across 0 human edits (100% retention)"
+        ],
+        "feature_contributions": {
+          "byte_churn": 0.0,
+          "edit_velocity": 0.0,
+          "editor_diversity": 0.0,
+          "consensus_or_dispute": 0.0,
+          "pageview_corroboration": 0.0
+        },
+        "passed_verification": true
+      },
+      {
+        "pattern_title": "CTRL_HYPERACTIVE_ROUTINE_CHATTER",
+        "expected_positive": false,
+        "expected_alert_type": null,
+        "actual_alert_type": "NONE",
+        "detector_a_fixed_flag": true,
+        "detector_b_historical_flag": false,
+        "historical_score": 24.51,
+        "feature_contributions_sum": 24.51,
+        "velocity_zscore": 1.019,
+        "editor_surge_ratio": 1.125,
+        "edits_human": 6,
+        "distinct_human_editors": 3,
+        "reasons_count": 4,
+        "reasons": [
+          "Edit velocity surge: 6 human edits in 5m (z-score +1.0 vs page baseline)",
+          "Contributor arrival: 3 distinct human editors active (1.1x baseline diversity)",
+          "Content churn: 660 gross bytes moved (net +660 B, rewriting 0 B)",
+          "Constructive consensus: 0 reverts across 6 human edits (100% retention)"
+        ],
+        "feature_contributions": {
+          "byte_churn": 5.96,
+          "edit_velocity": 7.88,
+          "editor_diversity": 5.99,
+          "consensus_or_dispute": 4.68,
+          "pageview_corroboration": 0.0
+        },
+        "passed_verification": true
+      }
+    ]
+  },
+  "experiment_4_detector_false_alert_comparison": {
+    "full_evaluation_comparison": [
+      {
+        "detector": "Detector A: Fixed Threshold (Naive Burst = News)",
+        "total_flagged": 885,
+        "verified_true_shifts": 276,
+        "false_alerts": 609,
+        "precision_pct": 31.19,
+        "false_alert_rate_pct": 68.81,
+        "high_revert_war_windows": 478,
+        "low_zscore_routine_windows": 0,
+        "avg_velocity_zscore": 92.95,
+        "avg_reasons_per_alert": 4.06
+      },
+      {
+        "detector": "Detector A: Fixed Threshold (All Shift Types)",
+        "total_flagged": 885,
+        "verified_true_shifts": 777,
+        "false_alerts": 108,
+        "precision_pct": 87.8,
+        "false_alert_rate_pct": 12.2,
+        "high_revert_war_windows": 478,
+        "low_zscore_routine_windows": 0,
+        "avg_velocity_zscore": 92.95,
+        "avg_reasons_per_alert": 4.06
+      },
+      {
+        "detector": "Detector B: Explainable Historical Score",
+        "total_flagged": 2583,
+        "verified_true_shifts": 2306,
+        "false_alerts": 277,
+        "precision_pct": 89.28,
+        "false_alert_rate_pct": 10.72,
+        "high_revert_war_windows": 1341,
+        "low_zscore_routine_windows": 0,
+        "avg_velocity_zscore": 65.3,
+        "avg_reasons_per_alert": 4.03
+      },
+      {
+        "detector": "Detector C: Spark ML (KMeans + RandomForest)",
+        "total_flagged": 2083,
+        "verified_true_shifts": 2077,
+        "false_alerts": 6,
+        "precision_pct": 99.71,
+        "false_alert_rate_pct": 0.29,
+        "high_revert_war_windows": 1323,
+        "low_zscore_routine_windows": 0,
+        "avg_velocity_zscore": 65.56,
+        "avg_reasons_per_alert": 4.03
+      }
+    ],
+    "reviewed_200_window_sample_audit": [
+      {
+        "detector": "Sample-200 Detector A (Fixed Rule)",
+        "total_flagged": 155,
+        "verified_true_shifts": 92,
+        "false_alerts": 63,
+        "precision_pct": 59.35,
+        "false_alert_rate_pct": 40.65,
+        "high_revert_war_windows": 55,
+        "low_zscore_routine_windows": 0,
+        "avg_velocity_zscore": 151.37,
+        "avg_reasons_per_alert": 4.09
+      },
+      {
+        "detector": "Sample-200 Detector B (Historical Score)",
+        "total_flagged": 186,
+        "verified_true_shifts": 181,
+        "false_alerts": 5,
+        "precision_pct": 97.31,
+        "false_alert_rate_pct": 2.69,
+        "high_revert_war_windows": 47,
+        "low_zscore_routine_windows": 0,
+        "avg_velocity_zscore": 146.5,
+        "avg_reasons_per_alert": 4.08
+      },
+      {
+        "detector": "Sample-200 Detector C (Spark ML)",
+        "total_flagged": 161,
+        "verified_true_shifts": 161,
+        "false_alerts": 0,
+        "precision_pct": 100.0,
+        "false_alert_rate_pct": 0.0,
+        "high_revert_war_windows": 45,
+        "low_zscore_routine_windows": 0,
+        "avg_velocity_zscore": 158.58,
+        "avg_reasons_per_alert": 4.09
+      }
+    ],
+    "key_finding": "Detector B reduces the false-alert rate from 68.81% (Detector A naive fixed threshold) to 10.72% by normalizing against per-page historical baselines and separating EDIT_WAR_CONTROVERSY from BREAKING_NEWS_CANDIDATE."
+  },
+  "metric_4_replay_idempotency": {
+    "replay_test_day": "2026-10-15",
+    "run1_alerts_count": 39,
+    "replayed_merged_alerts_count": 39,
+    "distinct_alert_ids": 39,
+    "duplicate_alerts_after_replay": 0,
+    "count_drift_between_runs": 0,
+    "python_spark_alert_id_parity_checked": 39,
+    "idempotency_verified": true,
+    "runtime_sec": 12.4
+  },
+  "milestones_1_4_5_curated_lake_audit": {
+    "tables_verified": {
+      "rc_events": {
+        "rows": 8428021,
+        "columns": 29,
+        "schema_valid": true
+      },
+      "page_baselines": {
+        "rows": 1801530,
+        "columns": 25,
+        "schema_valid": true
+      },
+      "churn_bot_summary": {
+        "rows": 1123,
+        "columns": 17,
+        "schema_valid": true
+      },
+      "rankings_daily": {
+        "rows": 14870,
+        "columns": 24,
+        "schema_valid": true
+      },
+      "page_windows_5m": {
+        "rows": 350192,
+        "columns": 23,
+        "schema_valid": true
+      },
+      "page_windows_1h": {
+        "rows": 189517,
+        "columns": 23,
+        "schema_valid": true
+      },
+      "alerts": {
+        "rows": 3564,
+        "columns": 26,
+        "schema_valid": true
+      }
+    },
+    "dashboard1_alerts_top25_query_sec": 0.088,
+    "under_2s_target_met": true
+  },
+  "total_evaluation_runtime_sec": 22.57
+}
