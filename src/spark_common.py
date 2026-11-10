@@ -48,6 +48,13 @@ CHECKPOINT_PATH = str(
 
 def create_spark(app_name, with_kafka=True):
     """Create a UTC Spark session; offline jobs can skip Kafka jar resolution."""
+    if "JAVA_HOME" not in os.environ or not os.path.exists(
+        os.path.join(os.environ.get("JAVA_HOME", ""), "bin", "java")
+    ):
+        if os.path.exists("/opt/homebrew/opt/openjdk@17"):
+            os.environ["JAVA_HOME"] = "/opt/homebrew/opt/openjdk@17"
+            os.environ["PATH"] = os.environ["JAVA_HOME"] + "/bin:" + os.environ.get("PATH", "")
+    os.environ.setdefault("SPARK_LOCAL_IP", "127.0.0.1")
     # Local workers must use the driver's Python version, not another python3 on PATH.
     if SPARK_MASTER.startswith("local"):
         os.environ.setdefault("PYSPARK_PYTHON", sys.executable)

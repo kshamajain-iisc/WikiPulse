@@ -42,11 +42,14 @@ def create_app(service):
 
 
 def main():
+    default_curated = ROOT / "data/curated"
+    if not default_curated.exists() and (ROOT.parent / "historical/data/curated").exists():
+        default_curated = ROOT.parent / "historical/data/curated"
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--port", type=int, default=8080)
     parser.add_argument("--live", type=Path, default=ROOT / "data/live_activity")
     parser.add_argument("--history", type=Path, default=ROOT / "data/week2/historical")
-    parser.add_argument("--curated", type=Path, default=ROOT / "data/curated")
+    parser.add_argument("--curated", type=Path, default=default_curated)
     args = parser.parse_args()
     spark = create_spark("WikiPulse-Dashboards", with_kafka=False)
     try:

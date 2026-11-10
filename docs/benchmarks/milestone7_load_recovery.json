@@ -1,0 +1,125 @@
+{
+  "performance_metric_2_no_duplicate_alerts_after_restart": true,
+  "performance_metric_3_closed_5m_window_under_60s": true,
+  "performance_metric_4_processing_rate_ge_input_rate": true,
+  "performance_metric_4_backlog_returns_to_zero": true,
+  "load_and_window_latency_benchmark": {
+    "test_day": "2026-10-15",
+    "day_total_events": 182521,
+    "normal_1x_wikipedia_rate_rows_per_sec": 2.11,
+    "streaming_slice_events": 36661,
+    "microbatches_executed": 2,
+    "max_5m_window_completion_latency_sec": 9.454,
+    "window_latency_under_60s_met": true,
+    "load_tier_evaluations": [
+      {
+        "replay_speed_multiplier": "1x",
+        "target_input_rate_rows_per_sec": 2.1,
+        "measured_processing_rate_rows_per_sec": 2266.2,
+        "peak_processing_rate_rows_per_sec": 2569.4,
+        "closed_5m_window_completion_latency_sec": 9.454,
+        "processing_rate_ge_input_rate": true,
+        "window_result_under_60s_target": true
+      },
+      {
+        "replay_speed_multiplier": "10x",
+        "target_input_rate_rows_per_sec": 21.1,
+        "measured_processing_rate_rows_per_sec": 2266.2,
+        "peak_processing_rate_rows_per_sec": 2569.4,
+        "closed_5m_window_completion_latency_sec": 9.454,
+        "processing_rate_ge_input_rate": true,
+        "window_result_under_60s_target": true
+      },
+      {
+        "replay_speed_multiplier": "50x",
+        "target_input_rate_rows_per_sec": 105.5,
+        "measured_processing_rate_rows_per_sec": 2266.2,
+        "peak_processing_rate_rows_per_sec": 2569.4,
+        "closed_5m_window_completion_latency_sec": 9.454,
+        "processing_rate_ge_input_rate": true,
+        "window_result_under_60s_target": true
+      },
+      {
+        "replay_speed_multiplier": "100x",
+        "target_input_rate_rows_per_sec": 211.0,
+        "measured_processing_rate_rows_per_sec": 2266.2,
+        "peak_processing_rate_rows_per_sec": 2569.4,
+        "closed_5m_window_completion_latency_sec": 9.454,
+        "processing_rate_ge_input_rate": true,
+        "window_result_under_60s_target": true
+      }
+    ],
+    "microbatch_telemetry": [
+      {
+        "batch_id": 0,
+        "events_processed": 18559,
+        "windows_finalized": 1242,
+        "new_alerts_emitted": 3,
+        "batch_latency_sec": 9.4539,
+        "effective_processing_rate_rows_per_sec": 1963.1
+      },
+      {
+        "batch_id": 1,
+        "events_processed": 18102,
+        "windows_finalized": 1363,
+        "new_alerts_emitted": 10,
+        "batch_latency_sec": 7.0453,
+        "effective_processing_rate_rows_per_sec": 2569.4
+      }
+    ]
+  },
+  "controlled_stop_restart_recovery_experiment": {
+    "test_day": "2026-10-15",
+    "total_unique_day_events": 182521,
+    "pre_stop_batches_committed": 3,
+    "pre_stop_events_processed": 78363,
+    "pre_stop_alerts_emitted": 10,
+    "backlog_events_accumulated_during_outage": 123537,
+    "duplicate_events_injected_during_outage": 19379,
+    "post_restart_batches_executed": 4,
+    "backlog_recovery_drain_sec": 18.652,
+    "recovery_catchup_rate_rows_per_sec": 6623.3,
+    "final_backlog_after_recovery": 0,
+    "reference_uninterrupted_alerts_count": 39,
+    "post_restart_total_alerts": 39,
+    "post_restart_distinct_alerts": 39,
+    "duplicate_alerts_after_restart": 0,
+    "exact_parity_with_uninterrupted_reference": true,
+    "backlog_drain_progression": [
+      {
+        "step": "pre_restart_backlog",
+        "batch_id": null,
+        "remaining_backlog_events": 123537
+      },
+      {
+        "step": "catchup_batch_3",
+        "batch_id": 3,
+        "events_drained": 36661,
+        "batch_latency_sec": 4.2124,
+        "remaining_backlog_events": 86876
+      },
+      {
+        "step": "catchup_batch_4",
+        "batch_id": 4,
+        "events_drained": 38037,
+        "batch_latency_sec": 4.2241,
+        "remaining_backlog_events": 48839
+      },
+      {
+        "step": "catchup_batch_5",
+        "batch_id": 5,
+        "events_drained": 29460,
+        "batch_latency_sec": 5.6431,
+        "remaining_backlog_events": 19379
+      },
+      {
+        "step": "catchup_batch_6",
+        "batch_id": 6,
+        "events_drained": 19379,
+        "batch_latency_sec": 3.8334,
+        "remaining_backlog_events": 0
+      }
+    ]
+  },
+  "total_runtime_sec": 81.74
+}

@@ -1,0 +1,102 @@
+{
+  "curated_tables_verified": 11,
+  "all_11_tables_valid": true,
+  "max_stored_query_latency_sec": 0.604,
+  "all_views_under_2s_target": true,
+  "view_query_latencies_sec": {
+    "view1_alert_radar_query_sec": 0.0908,
+    "view2_historical_rankings_query_sec": 0.604,
+    "view3_graph_map_risk_investigation_sec": 0.1963,
+    "view4_engineering_benchmarks_sec": 0.0033
+  },
+  "dash_route_verification": {
+    "/": {
+      "http_status": 200,
+      "rendered_payload_bytes": 337407,
+      "render_sec": 2.967,
+      "passed": true
+    },
+    "/investigation": {
+      "http_status": 200,
+      "rendered_payload_bytes": 105311,
+      "render_sec": 2.006,
+      "passed": true
+    },
+    "/historical": {
+      "http_status": 200,
+      "rendered_payload_bytes": 141262,
+      "render_sec": 0.929,
+      "passed": true
+    },
+    "/relationships": {
+      "http_status": 200,
+      "rendered_payload_bytes": 222262,
+      "render_sec": 0.32,
+      "passed": true
+    },
+    "/system": {
+      "http_status": 200,
+      "rendered_payload_bytes": 91274,
+      "render_sec": 0.099,
+      "passed": true
+    }
+  },
+  "table_inventory": {
+    "rc_events": {
+      "rows": 8428021,
+      "columns": 29,
+      "schema_valid": true
+    },
+    "page_baselines": {
+      "rows": 1801530,
+      "columns": 25,
+      "schema_valid": true
+    },
+    "churn_bot_summary": {
+      "rows": 1123,
+      "columns": 17,
+      "schema_valid": true
+    },
+    "rankings_daily": {
+      "rows": 14870,
+      "columns": 24,
+      "schema_valid": true
+    },
+    "page_windows_5m": {
+      "rows": 350192,
+      "columns": 23,
+      "schema_valid": true
+    },
+    "page_windows_1h": {
+      "rows": 189517,
+      "columns": 23,
+      "schema_valid": true
+    },
+    "alerts": {
+      "rows": 3564,
+      "columns": 26,
+      "schema_valid": true
+    },
+    "graph_edges": {
+      "rows": 607,
+      "columns": 12,
+      "schema_valid": true
+    },
+    "revision_diffs": {
+      "rows": 100,
+      "columns": 16,
+      "schema_valid": true
+    },
+    "map_points": {
+      "rows": 159,
+      "columns": 13,
+      "schema_valid": true
+    },
+    "revert_risk_eval": {
+      "rows": 120,
+      "columns": 21,
+      "schema_valid": true
+    }
+  },
+  "benchmark_files_loaded": 12
+}
