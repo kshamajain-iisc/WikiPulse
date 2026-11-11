@@ -42,6 +42,7 @@ from pyspark.sql import DataFrame, Window, functions as F
 from src.config.settings import (
     CURATED_TABLES,
     DETECTOR_DEFAULTS,
+    EVALUATION_END_DATE,
     USER_AGENT,
     build_liftwing_request,
     get_spark_session,
@@ -221,9 +222,10 @@ def select_candidate_revisions_with_outcomes(
     alert_page_map = {int(r["pageid"]): float(r["peak_revert_ratio"] or 0.0) for r in alert_page_rows}
     alert_pageids = list(alert_page_map.keys())
 
-    # Restrict to edits on or before Oct 28 so at least 48 hours of subsequent history exist in our dataset
+    # Restrict to edits at least 48 hours before EVALUATION_END_DATE so subsequent history exists in our dataset
     scoped_rc = main_edits.filter(
-        F.col("pageid").isin(alert_pageids) & (F.col("day") <= F.lit("2026-10-28").cast("date"))
+        F.col("pageid").isin(alert_pageids)
+        & (F.col("day") <= F.date_sub(F.lit(EVALUATION_END_DATE).cast("date"), 2))
     )
 
     # Window over `(pageid)` ordered by `ts` to find the next reverting edit (`is_revert_action = true`)

@@ -94,7 +94,7 @@ flowchart TD
 * **Execution Scripts:** `Repo/src/anomaly/window_features.py` and `Repo/src/anomaly/scoring_sparkml.py`
 * **Memory Bottleneck:** `VectorAssembler` and ML training iterations (`KMeans`, `RandomForestClassifier`).
 * **Why it fits:**
-  * Rolling 5-minute and 1-hour windows are evaluated over the evaluation period (`2026-10-06` to `2026-10-30` = 25 days).
+  * Rolling 5-minute and 1-hour windows are evaluated over the evaluation period (`EVALUATION_START_DATE = 2026-11-01` to `EVALUATION_END_DATE = 2026-11-08`, following the `2026-09-15 .. 2026-10-31` baseline period).
   * Filtering for candidate pages (edits $\ge 3$) yields $\approx 300,000$ to $500,000$ feature rows.
   * A 10-feature double vector table occupies:
     $$\text{Memory} \approx 500,000 \times 10 \times 8 \text{ bytes} \approx 40 \text{ MB}$$
@@ -134,7 +134,7 @@ spark = (
    * Calling `.cache()` or `.persist()` on `raw_df` (the 46 JSONL.gz files) will attempt to materialize deserialized Java objects for ~6 GB of text, causing JVM `OutOfMemoryError` or heavy OS swapping.
    * Only cache curated, filtered, columnar Parquet tables when an intermediate stage is reused $\ge 2$ times, and call `.unpersist()` as soon as the downstream computation finishes.
 2. **Use Partition Filtering in Downstream Tasks:**
-   * Downstream jobs should always filter on `day` (`WHERE day >= '2026-10-06'`) so Spark prunes entire Parquet directory partitions without reading them into memory.
+   * Downstream jobs should always filter on `day` (`WHERE day >= '2026-11-01'`) so Spark prunes entire Parquet directory partitions without reading them into memory.
 3. **Run Ingestion in Batch Modes if Multitasking:**
    * If running a heavy web browser or Docker alongside Spark, dial `driver_memory` down to `"3g"`. The pipeline will execute with slightly more frequent garbage collections but zero swap thrashing.
 

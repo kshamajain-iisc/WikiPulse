@@ -5,8 +5,11 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
-PYTHON_BIN="${PROJECT_ROOT}/.venv/bin/python3"
-if [[ ! -x "${PYTHON_BIN}" ]]; then
+if [[ -x "${SCRIPT_DIR}/.venv/bin/python3" ]]; then
+    PYTHON_BIN="${SCRIPT_DIR}/.venv/bin/python3"
+elif [[ -x "${PROJECT_ROOT}/.venv/bin/python3" ]]; then
+    PYTHON_BIN="${PROJECT_ROOT}/.venv/bin/python3"
+else
     PYTHON_BIN="python3"
 fi
 

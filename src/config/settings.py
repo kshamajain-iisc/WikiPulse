@@ -1,6 +1,7 @@
 """Milestone 1: Central configuration, paths, Spark session factory, and confirmed Wikimedia API contracts."""
 
 import os
+import sys
 from pathlib import Path
 from typing import Any, Dict
 
@@ -11,11 +12,31 @@ from typing import Any, Dict
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PROJECT_ROOT = REPO_ROOT.parent
 
-# `historical/data` serves as the shared raw & curated data lake
-HISTORICAL_DATA_DIR = PROJECT_ROOT / "historical" / "data"
+
+def _resolve_historical_data_dir() -> Path:
+    """Resolve the shared raw & curated data lake directory:
+    1. Explicit `WIKIPULSE_DATA_DIR` environment variable if set.
+    2. Sibling `historical/data` directory (`PROJECT_ROOT / "historical" / "data"`) if present.
+    3. Repository-local `data` directory (`REPO_ROOT / "data"`) when `historical/data` is absent.
+    """
+    env_dir = os.environ.get("WIKIPULSE_DATA_DIR")
+    if env_dir:
+        return Path(env_dir).expanduser().resolve()
+    sibling_dir = PROJECT_ROOT / "historical" / "data"
+    if sibling_dir.exists():
+        return sibling_dir
+    return REPO_ROOT / "data"
+
+
+# Uses `historical/data` if present, otherwise falls back to `Repo/data`
+HISTORICAL_DATA_DIR = _resolve_historical_data_dir()
 RAW_RC_DIR = HISTORICAL_DATA_DIR / "enwiki_recentchanges"
 RAW_REVISIONS_DIR = HISTORICAL_DATA_DIR / "enwiki_revisions"
-RAW_ANALYTICS_DIR = HISTORICAL_DATA_DIR / "analytics"
+RAW_ANALYTICS_DIR = (
+    Path(os.environ["WIKIPULSE_DATA_DIR"]).expanduser().resolve() / "analytics"
+    if os.environ.get("WIKIPULSE_DATA_DIR")
+    else REPO_ROOT / "data" / "analytics"
+)
 CURATED_DIR = HISTORICAL_DATA_DIR / "curated"
 
 # Curated Parquet table paths (Milestones 4, 5, 6)
@@ -121,11 +142,11 @@ REVERTED_TAG = "mw-reverted"
 REVERT_ACTION_TAGS = ("mw-rollback", "mw-undo", "mw-manual-revert")
 REVERT_TAGS = (REVERTED_TAG,) + REVERT_ACTION_TAGS
 
-# Baseline vs Evaluation split for the Sept 15 - Oct 31 dataset
+# Baseline vs Evaluation split for the Sept 15 - Nov 08 dataset (55 days)
 BASELINE_START_DATE = "2026-09-15"
-BASELINE_END_DATE = "2026-10-05"       # 21-day initial baseline window
-EVALUATION_START_DATE = "2026-10-06"
-EVALUATION_END_DATE = "2026-10-30"
+BASELINE_END_DATE = "2026-10-31"       # 47-day baseline window (Sept 15 - Oct 31)
+EVALUATION_START_DATE = "2026-11-01"   # Post-Oct-31 evaluation window (Nov 01 - Nov 08)
+EVALUATION_END_DATE = "2026-11-08"
 ROLLING_BASELINE_DAYS = 14
 
 #Detector thresholds (Milestone 5)
@@ -254,6 +275,7 @@ def get_spark_session(app_name: str = "WikiPulse", shuffle_partitions: int = 16,
             os.environ["PATH"] = os.environ["JAVA_HOME"] + "/bin:" + os.environ.get("PATH", "")
 
     os.environ.setdefault("SPARK_LOCAL_IP", "127.0.0.1")
+    os.environ.setdefault("PYSPARK_PYTHON", sys.executable)
 
     from pyspark.sql import SparkSession
 

@@ -97,7 +97,7 @@ Plus two pre-aggregated historical serving tables (`curated/churn_bot_summary`: 
 ## 4. Methodology & Core Features
 
 ### 4.1 Zero-Inclusive Per-Page Historical Baselines ([`build_baselines.py`](file:///Users/senthilrajk/Downloads/002_IISc_DSBA/Data%20Engineering%20at%20Scale/Project-WikiPulse/Repo/src/historical/build_baselines.py))
-Over the 21-day baseline period (`2026-09-15 .. 2026-10-05`, $D = 21$ days, $H = 504$ hours), per-page moments are computed across **all** calendar days/hours (including zero-edit hours) using sufficient statistics:
+Over the baseline period (`BASELINE_START_DATE = 2026-09-15` .. `BASELINE_END_DATE = 2026-10-31`, $D = 47$ days, $H = 1,128$ hours, with post-baseline evaluation over `2026-11-01 .. 2026-11-08`), per-page moments are computed across **all** calendar days/hours (including zero-edit hours) using sufficient statistics:
 $$\mu_{\text{hour}} = \frac{\sum x_h}{H}, \qquad \sigma_{\text{hour}} = \sqrt{\max\left(0, \frac{\sum x_h^2}{H} - \mu_{\text{hour}}^2\right)}$$
 with calibrated variance floors ($\sigma_{\min, 5\text{m}} = 0.08$, $\sigma_{\min, 1\text{h}} = 0.15$) and session-clustered editor window scaling ($1/18$ for `5m`, $1/6$ for `1h`).
 

@@ -104,6 +104,7 @@ This starts Kafka, creates the topics (`wiki.raw.edits` and `wiki.shift.candidat
 
 ## 4. Key Documentation
 
+- **[Historical Data Setup & Curated Ingestion Guide](DATA_SETUP.md)** — Google Drive download link, `Repo/data/enwiki_recentchanges` placement, and `ingest_curate.py` workflow.
 - **[Final Project Report](docs/final_project_report.md)** — Complete architecture, methodology, and evaluation across all 6 Proposal Experiments and 14 Metrics.
 - **[Presentation & Live/Backup Demo Guide](docs/presentation_and_demo_guide.md)** — 12-slide presentation deck outline and 5-minute guided demo runbook.
 - **[Implementation Review (Milestones 1–8)](docs/implementation_review_milestones_1_and_4.md)** — Detailed file-by-file inventory, design rationale, and measured artifacts.
