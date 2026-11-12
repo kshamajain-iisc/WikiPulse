@@ -39,7 +39,14 @@ if str(REPO_ROOT) not in sys.path:
 from pyspark.sql import functions as F
 from dashboards.app import create_app
 from dashboards.data_service import DashboardDataService
-from src.config.settings import CURATED_DIR, CURATED_TABLES, get_spark_session, safe_read_parquet
+from src.config.settings import (
+    CURATED_DIR,
+    CURATED_TABLES,
+    EVALUATION_END_DATE,
+    EVALUATION_START_DATE,
+    get_spark_session,
+    safe_read_parquet,
+)
 from src.dashboard.app import run_end_to_end_dashboard_benchmark
 from src.dashboard_queries import DashboardPaths, DashboardQueries
 
@@ -310,7 +317,7 @@ def main() -> int:
         )
         service = DashboardDataService(DashboardQueries(spark, paths), cache_seconds=120)
         for screen in ("live", "investigation", "historical", "relationships", "system"):
-            _ = service.load(screen, "5m", "finalized", None, "2026-10-06", "2026-10-30")
+            _ = service.load(screen, "5m", "finalized", None, EVALUATION_START_DATE, EVALUATION_END_DATE)
 
         app = create_app(service)
         print(f"\nLaunching Pre-Warmed WikiPulse Backup Demo on http://127.0.0.1:{args.port} ...", flush=True)

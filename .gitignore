@@ -38,6 +38,10 @@ checkpoints/
 # Local Data, Raw Dumps & Output Directories
 # ==========================================
 data/
+data/analytics/
+data/enwiki_recentchanges/
+data/enwiki_revisions/
+data/curated/
 raw_data/
 bronze/
 silver/

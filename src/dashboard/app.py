@@ -32,7 +32,14 @@ from pyspark.sql import functions as F
 from dashboards.app import create_app
 from dashboards.callbacks import render_dashboard
 from dashboards.data_service import DashboardDataService
-from src.config.settings import CURATED_DIR, CURATED_TABLES, get_spark_session, safe_read_parquet
+from src.config.settings import (
+    CURATED_DIR,
+    CURATED_TABLES,
+    EVALUATION_END_DATE,
+    EVALUATION_START_DATE,
+    get_spark_session,
+    safe_read_parquet,
+)
 from src.dashboard_queries import DashboardPaths, DashboardQueries
 from src.models.schemas import (
     ALERT_SCHEMA,
@@ -176,7 +183,9 @@ def run_end_to_end_dashboard_benchmark(spark, curated_dir: Path) -> dict[str, An
         t_r = time.perf_counter()
         http_resp = client.get(route)
         search = f"?title={top_article}" if route == "/investigation" else ""
-        rendered = render_dashboard(service, route, search, "5m", "finalized", None, "2026-10-06", "2026-10-30")
+        rendered = render_dashboard(
+            service, route, search, "5m", "finalized", None, EVALUATION_START_DATE, EVALUATION_END_DATE
+        )
         serialized = json.dumps(rendered, cls=PlotlyJSONEncoder)
         elapsed_r = round(time.perf_counter() - t_r, 3)
         route_ok = (http_resp.status_code == 200) and ("children" in serialized) and ("NaN" not in serialized)

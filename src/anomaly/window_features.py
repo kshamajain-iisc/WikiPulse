@@ -2,7 +2,7 @@
 
 Builds `curated/page_windows_5m` and `curated/page_windows_1h` conforming to `PAGE_WINDOW_SCHEMA`:
 - Reads deduplicated events from `curated/rc_events` over the evaluation period
-  (default: `2026-10-06` .. `2026-10-30`, or all 46 days if `--all-days` is passed).
+  (default: `2026-11-01` .. `2026-11-08`, or all 55 days if `--all-days` is passed).
 - Aggregates edit velocity, human/bot/anon split, distinct human editors, gross byte churn
   (`sum(|delta|)`), net byte growth (`sum(delta)`), rewriting volume (`gross - |net|`),
   revert counts/ratios, and new-page creation flags in 5-minute and 1-hour tumbling windows.
@@ -32,6 +32,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from pyspark.sql import DataFrame, functions as F
 from src.config.settings import (
+    BASELINE_START_DATE,
     CURATED_TABLES,
     EVALUATION_END_DATE,
     EVALUATION_START_DATE,
@@ -197,7 +198,7 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="Build 5m and 1h Page Window Features joined with Historical Baselines.")
     ap.add_argument("--start", default=EVALUATION_START_DATE, help="Start date YYYY-MM-DD (inclusive)")
     ap.add_argument("--end", default=EVALUATION_END_DATE, help="End date YYYY-MM-DD (inclusive)")
-    ap.add_argument("--all-days", action="store_true", help="Build windows across all 46 days instead of evaluation split.")
+    ap.add_argument("--all-days", action="store_true", help="Build windows across all 55 days instead of evaluation split.")
     ap.add_argument("--min-edits-5m", type=int, default=2, help="Minimum edits in a 5-minute window to materialize.")
     ap.add_argument("--min-edits-1h", type=int, default=3, help="Minimum edits in a 1-hour window to materialize.")
     args = ap.parse_args()
@@ -216,7 +217,7 @@ def main() -> int:
         print(f"  • Window Evaluation Period : {args.start} .. {args.end}")
         rc_df = rc_df.filter((F.col("day") >= F.lit(args.start)) & (F.col("day") <= F.lit(args.end)))
     else:
-        print("  • Window Evaluation Period : ALL 46 DAYS (2026-09-15 .. 2026-10-30)")
+        print(f"  • Window Evaluation Period : ALL DAYS ({BASELINE_START_DATE} .. {EVALUATION_END_DATE})")
 
     # 1. Build 5-minute windows
     t_5m = time.time()
@@ -272,8 +273,8 @@ def main() -> int:
     )
 
     summary = {
-        "evaluation_start": args.start if not args.all_days else "2026-09-15",
-        "evaluation_end": args.end if not args.all_days else "2026-10-30",
+        "evaluation_start": args.start if not args.all_days else BASELINE_START_DATE,
+        "evaluation_end": args.end if not args.all_days else EVALUATION_END_DATE,
         "windows_5m_total": count_5m,
         "windows_5m_ns0": ns0_5m,
         "windows_1h_total": count_1h,
