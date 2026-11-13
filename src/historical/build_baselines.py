@@ -40,6 +40,7 @@ from src.config.settings import (
     BASELINE_END_DATE,
     BASELINE_START_DATE,
     CURATED_TABLES,
+    EVALUATION_END_DATE,
     PROJECT_ROOT,
     RAW_ANALYTICS_DIR,
     USER_AGENT,
@@ -127,14 +128,15 @@ def ensure_repo_analytics_dir(start_dt: date, end_dt: date, project: str = WIKI_
                 if not dst_page_json.exists():
                     shutil.copy2(src_page_json, dst_page_json)
 
-    # 2. Fetch or refresh project-wide aggregate series into `Repo/data/analytics` through `end_dt`
+    # 2. Fetch or refresh project-wide aggregate series into `Repo/data/analytics` through `full_end_dt`
+    full_end_dt = max(end_dt, date.fromisoformat(EVALUATION_END_DATE))
     base_url = WIKIMEDIA_APIS["wikimedia_analytics_api"]["url"]
     s_ymd = start_dt.strftime("%Y%m%d")
-    e_ymd = end_dt.strftime("%Y%m%d")
+    e_ymd = full_end_dt.strftime("%Y%m%d")
 
     for editor_type in ("all-editor-types", "user", "anonymous", "group-bot", "name-bot"):
         target = analytics_dir / f"edits_daily_{editor_type}.json"
-        if not _json_series_covers_date(target, end_dt):
+        if not _json_series_covers_date(target, full_end_dt):
             data = fetch_json_polite(
                 f"{base_url}/edits/aggregate/{project}/{editor_type}/all-page-types/daily/{s_ymd}/{e_ymd}"
             )
@@ -143,7 +145,7 @@ def ensure_repo_analytics_dir(start_dt: date, end_dt: date, project: str = WIKI_
 
     for page_type in ("content", "non-content"):
         target = analytics_dir / f"edits_daily_{page_type}.json"
-        if not _json_series_covers_date(target, end_dt):
+        if not _json_series_covers_date(target, full_end_dt):
             data = fetch_json_polite(
                 f"{base_url}/edits/aggregate/{project}/all-editor-types/{page_type}/daily/{s_ymd}/{e_ymd}"
             )
@@ -151,14 +153,14 @@ def ensure_repo_analytics_dir(start_dt: date, end_dt: date, project: str = WIKI_
                 target.write_text(json.dumps(data, indent=1), encoding="utf-8")
 
     editors_target = analytics_dir / "editors_daily.json"
-    if not _json_series_covers_date(editors_target, end_dt):
+    if not _json_series_covers_date(editors_target, full_end_dt):
         data = fetch_json_polite(
             f"{base_url}/editors/aggregate/{project}/all-editor-types/all-page-types/all-activity-levels/daily/{s_ymd}/{e_ymd}"
         )
         if data:
             editors_target.write_text(json.dumps(data, indent=1), encoding="utf-8")
 
-    # 3. Fetch or top-up daily top-1000 viewed articles if `pageviews_top_daily.json` is missing days in `[start_dt .. end_dt]`
+    # 3. Fetch or top-up daily top-1000 viewed articles if `pageviews_top_daily.json` is missing days in `[start_dt .. full_end_dt]`
     top_daily_path = analytics_dir / "pageviews_top_daily.json"
     tops: dict[str, list] = {}
     if top_daily_path.exists():
@@ -169,7 +171,7 @@ def ensure_repo_analytics_dir(start_dt: date, end_dt: date, project: str = WIKI_
 
     missing_days = []
     cur = start_dt
-    while cur <= end_dt:
+    while cur <= full_end_dt:
         if str(cur) not in tops:
             missing_days.append(cur)
         cur += timedelta(days=1)
@@ -190,18 +192,23 @@ def ensure_repo_analytics_dir(start_dt: date, end_dt: date, project: str = WIKI_
 
 
 def load_and_enrich_pageviews(top_titles: list[str], start_dt: date, end_dt: date, fetch_top_n: int = 0) -> list[tuple]:
-    """Load pageview statistics from `Repo/data/analytics/` and optionally fetch missing top pages."""
+    """Load pageview statistics from `Repo/data/analytics/` (scoped to `[start_dt .. end_dt]` for baselines)
+    and optionally fetch missing top pages."""
     analytics_dir = ensure_repo_analytics_dir(start_dt, end_dt)
     pages_cache_dir = analytics_dir / "pages"
     pages_cache_dir.mkdir(parents=True, exist_ok=True)
+    start_iso = start_dt.isoformat()
+    end_iso = end_dt.isoformat()
 
-    # 1. Parse `pageviews_top_daily.json`
+    # 1. Parse `pageviews_top_daily.json` (scoped to baseline window `[start_dt .. end_dt]`)
     per_title_views: dict[str, dict[str, int]] = {}
     top_daily_path = analytics_dir / "pageviews_top_daily.json"
     if top_daily_path.exists():
         try:
             top_data = json.loads(top_daily_path.read_text(encoding="utf-8"))
             for day_str, articles in top_data.items():
+                if not (start_iso <= day_str <= end_iso):
+                    continue
                 for item in articles:
                     art = item.get("article", "").replace("_", " ")
                     views = item.get("views")
