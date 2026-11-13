@@ -1,34 +1,73 @@
 """Read-only dashboard service with a short server cache and serialized Spark work."""
 
+import calendar
 import json
 import logging
 import threading
 import time
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
-from src.dashboard_queries import DashboardPaths, DashboardQueries
+from dashboards.time_utils import IST, format_india_time
+from src.dashboard_queries import DashboardPaths, DashboardQueries, WINDOW_SECONDS
+
+
+def _historical_bounds(period):
+    """Return inclusive calendar dates for the selected historical lookback."""
+    end = datetime.now(IST).date()
+    if period == "15d":
+        start = end - timedelta(days=14)
+    else:
+        months = 3 if period == "3m" else 1
+        month_index = end.year * 12 + end.month - 1 - months
+        year, zero_based_month = divmod(month_index, 12)
+        month = zero_based_month + 1
+        start = date(year, month, min(end.day, calendar.monthrange(year, month)[1]))
+    return start.isoformat(), end.isoformat()
 
 
 class DashboardDataService:
     """Keep presentation code independent of Spark sessions and storage formats."""
 
-    def __init__(self, queries: DashboardQueries, cache_seconds: int = 20):
+    def __init__(self, queries: DashboardQueries, cache_seconds: int = 15):
         self.queries = queries
         self.cache_seconds = cache_seconds
         self._cache = {}
+        self._article_cache = {}
+        self._replay_bounds = {}
         # Flask callbacks may arrive concurrently. One lock prevents overlapping
         # expensive Spark jobs from multiple tabs or automatic refresh requests.
         self._lock = threading.Lock()
 
-    def load(self, page, duration="5m", view="live", title=None, start=None, end=None):
-        key = (page, duration, view, title, start, end)
+    def load(
+        self, page, duration="5m", view="live", title=None, start=None, end=None,
+        replay_frame=0, replay_speed=1,
+    ):
+        key = (page, duration, view, title, start, end, replay_frame, replay_speed)
         with self._lock:
             cached = self._cache.get(key)
-            if cached and time.monotonic() - cached[0] < self.cache_seconds:
+            ttl = self._cache_ttl(page, view)
+            if cached and time.monotonic() - cached[0] < ttl:
                 return cached[1]
             try:
-                data = self._load(page, duration, view, title, start, end)
+                replay_cursor = None
+                if view == "replay" and page in ("live", "investigation"):
+                    cached_bounds = self._replay_bounds.get(duration)
+                    if cached_bounds is None or time.monotonic() - cached_bounds[0] >= 300:
+                        bounds = self.queries.replay_bounds(duration)
+                        self._replay_bounds[duration] = (time.monotonic(), bounds)
+                    else:
+                        bounds = cached_bounds[1]
+                    first, last = bounds
+                    if first is not None and last is not None:
+                        window_seconds = WINDOW_SECONDS.get(duration, 300)
+                        frame = max(0, int(replay_frame)) * max(1, int(replay_speed))
+                        warmup = min(window_seconds, max(0, last - first))
+                        replay_start = first + warmup
+                        replay_cursor = replay_start + window_seconds * frame
+                        if replay_cursor > last and last > replay_start:
+                            replay_cursor = replay_start + ((replay_cursor - replay_start) % (last - replay_start))
+                data = self._load(page, duration, view, title, start, end, replay_cursor)
                 data["loaded_at"] = datetime.now(timezone.utc).isoformat()
                 data["error"] = None
                 # Bound cache growth when many article/date combinations are used.
@@ -43,25 +82,53 @@ class DashboardDataService:
                     "metrics": {}, "timeline": [], "rankings": [],
                 }
 
-    def _load(self, page, duration, view, title, start, end):
+    def _cache_ttl(self, page, view):
+        if page in ("historical", "relationships", "system"):
+            return 300
+        if view == "replay":
+            return 3
+        return self.cache_seconds
+
+    def _load(self, page, duration, view, title, start, end, replay_cursor=None):
         if page == "historical":
+            if start in (None, "15d", "1m", "3m") and end is None:
+                start, end = _historical_bounds(start or "1m")
             return self.queries.historical(start, end)
         if page == "relationships":
+            missing = [
+                str(self.queries.paths.curated / name)
+                for name in ("graph_edges", "map_points")
+                if not self.queries.table_available(name)
+            ]
             return {
                 "edges": self.queries.optional_records("graph_edges"),
                 "points": self.queries.optional_records("map_points"),
+                "missing_sources": missing,
             }
         if page == "system":
             return self.system_health()
-        data = self.queries.activity(duration, view, title if page == "investigation" else None)
-        data["alerts"] = self.queries.alerts(duration, title if page == "investigation" else None)
+        data = self.queries.activity(
+            duration, view, title if page == "investigation" else None, replay_cursor,
+            focus=page == "investigation",
+        )
+        time_range = data.get("range") or {}
+        data["alerts"] = self.queries.alerts(
+            duration,
+            data.get("selected") if page == "investigation" else None,
+            range_start=time_range.get("start"), range_end=time_range.get("end"),
+        )
+        for alert in data["alerts"]:
+            alert["window_start_ist"] = format_india_time(alert.get("window_start"))
         if page == "investigation":
-            # When no article was selected, investigate the leading observed page.
-            selected = title or next(iter(data.get("rankings", [])), {}).get("title")
-            if selected and not title:
-                data = self.queries.activity(duration, view, selected)
-                data["alerts"] = self.queries.alerts(duration, selected)
-            data["articles"] = self.queries.article_titles(duration, view)
+            selected = title or data.get("selected")
+            article_key = (duration, view)
+            article_cached = self._article_cache.get(article_key)
+            if article_cached and time.monotonic() - article_cached[0] < 300:
+                articles = article_cached[1]
+            else:
+                articles = self.queries.article_titles(duration, view)
+                self._article_cache[article_key] = (time.monotonic(), articles)
+            data["articles"] = articles
             data["selected"] = selected
             data["diffs"] = self.queries.optional_records("revision_diffs", selected) if selected else []
             data["risks"] = self.queries.optional_records("revert_risk_eval", selected) if selected else []
@@ -133,18 +200,34 @@ class DashboardDataService:
                             "duplicates": rec_exp.get("duplicate_alerts_after_restart", 0),
                         },
                     ]
-        quality = self.queries.quality()
-        if not quality and (benchmark_root / "ingestion_summary.json").is_file():
-            ing = json.loads((benchmark_root / "ingestion_summary.json").read_text())
+        quality = {}
+        ingestion_summary = benchmark_root / "ingestion_summary.json"
+        if ingestion_summary.is_file():
+            ing = json.loads(ingestion_summary.read_text())
             raw_total = ing.get("raw_events_read") or ing.get("total_raw_events") or 0
             valid_total = ing.get("curated_events_written") or ing.get("curated_deduplicated_events") or 0
             dropped_cat = ing.get("categorize_dropped", max(0, raw_total - valid_total))
+            acceptance_rate = ing.get("acceptance_rate_pct")
+            if acceptance_rate is None:
+                acceptance_rate = round(100 * valid_total / raw_total, 2) if raw_total else 0.0
             quality = {
                 "raw_records": raw_total,
                 "valid_records": valid_total,
                 "invalid_records": dropped_cat,
-                "last_ingested": f"{ing.get('distinct_days', 46)} days curated ({ing.get('acceptance_rate_pct', 100.0)}% valid acceptance)",
+                "scope": "Historical curated ingestion summary",
+                "last_ingested": f"{ing.get('distinct_days', 46)} days curated ({acceptance_rate}% retained)",
             }
+        else:
+            bronze_progress = paths.runtime / "bronze.progress.json"
+            if bronze_progress.is_file():
+                progress_row = json.loads(bronze_progress.read_text())
+                quality = {
+                    "raw_records": progress_row.get("numInputRows"),
+                    "valid_records": progress_row.get("numInputRows"),
+                    "invalid_records": None,
+                    "scope": "Latest Bronze batch",
+                    "last_ingested": progress_row.get("timestamp", "No successful ingestion recorded yet"),
+                }
         lag_val = self.kafka_lag()
         if lag_val is None and recovery_summary:
             lag_val = 0

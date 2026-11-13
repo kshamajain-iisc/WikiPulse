@@ -4,13 +4,15 @@ import argparse
 from pathlib import Path
 
 from dash import Dash
-from flask import jsonify
+from flask import jsonify, request
 
 from dashboards.callbacks import register_callbacks
 from dashboards.data_service import DashboardDataService
 from dashboards.layout import shell
+from src.config.settings import CURATED_DIR
 from src.dashboard_queries import DashboardPaths, DashboardQueries
 from src.spark_common import ROOT, create_spark
+from src.local_supervisor import request_stream_restart, stream_health
 
 
 def create_app(service):
@@ -28,12 +30,20 @@ def create_app(service):
         # Readiness must not wait for a heavy Spark aggregation.
         return jsonify({"status": "ready", "frontend": "Dash + Plotly"})
 
+    @app.server.get("/api/stream/health")
+    def stream_health_route():
+        return jsonify(stream_health())
+
+    @app.server.post("/api/stream/restart")
+    def stream_restart_route():
+        result = request_stream_restart(request.headers.get("X-WikiPulse-Control-Token"))
+        return jsonify(result), 202 if result["ok"] else 409
+
     @app.server.get("/api/activity")
     def activity():
-        from flask import request
         duration = request.args.get("duration", "5m")
         view = request.args.get("view", "live")
-        if duration not in ("5m", "1h") or view not in ("live", "finalized"):
+        if duration not in ("5m", "1h", "6h") or view not in ("live", "finalized"):
             return jsonify({"error": "Invalid duration or view"}), 400
         data = service.load("live", duration, view)
         return jsonify(data), 503 if data.get("error") else 200
@@ -42,14 +52,11 @@ def create_app(service):
 
 
 def main():
-    default_curated = ROOT / "data/curated"
-    if not default_curated.exists() and (ROOT.parent / "historical/data/curated").exists():
-        default_curated = ROOT.parent / "historical/data/curated"
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--port", type=int, default=8080)
     parser.add_argument("--live", type=Path, default=ROOT / "data/live_activity")
     parser.add_argument("--history", type=Path, default=ROOT / "data/week2/historical")
-    parser.add_argument("--curated", type=Path, default=default_curated)
+    parser.add_argument("--curated", type=Path, default=CURATED_DIR)
     args = parser.parse_args()
     spark = create_spark("WikiPulse-Dashboards", with_kafka=False)
     try:

@@ -1,51 +1,92 @@
 """Plotly Graph Objects only: figures accept lists, never pandas dataframes."""
 
 import math
+from datetime import timedelta
 
 import plotly.graph_objects as go
 
-GREEN = "#16836f"
-BLUE = "#5976bb"
-AMBER = "#d69e45"
-INK = "#203c37"
+from dashboards.time_utils import to_india_wall_time
+
+GREEN = "#536dfe"
+BLUE = "#13a8d4"
+AMBER = "#e69a35"
+INK = "#25385f"
+
+def _india_range(time_range):
+    if not time_range:
+        return None
+    return [to_india_wall_time(time_range["start"]), to_india_wall_time(time_range["end"])]
+
+
+def _india_axis(figure, time_range=None):
+    figure.update_xaxes(tickformat="%d %b\n%H:%M", hoverformat="%d %b %Y, %H:%M")
+    if not time_range:
+        return
+    start, end = _india_range(time_range)
+    seconds = max(1, int((end - start).total_seconds()))
+    step = 60 if seconds <= 10 * 60 else 15 * 60 if seconds <= 2 * 60 * 60 else 2 * 60 * 60
+    first_tick = start.replace(second=0, microsecond=0)
+    wall_seconds = first_tick.hour * 3600 + first_tick.minute * 60
+    offset = (step - (wall_seconds % step)) % step
+    first_tick += timedelta(seconds=offset)
+    ticks = []
+    tick = first_tick
+    while tick < end:
+        ticks.append(tick)
+        tick += timedelta(seconds=step)
+    ticks.append(end)
+    figure.update_xaxes(
+        range=[start, end], tickmode="array", tickvals=ticks,
+        ticktext=[tick.strftime("%d %b<br>%H:%M") for tick in ticks],
+    )
+
+
+def _india_hover_labels(rows, key):
+    return [to_india_wall_time(row[key]).strftime("%d %b %Y, %H:%M") for row in rows]
 
 
 def style(figure, height=300):
     figure.update_layout(
         template="plotly_white", height=height,
         margin=dict(l=12, r=16, t=22, b=12),
-        font=dict(family="Arial, sans-serif", size=12, color="#71817b"),
+        font=dict(family="Arial, sans-serif", size=13, color="#66758d"),
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
         legend=dict(orientation="h", y=1.16, x=0),
         hovermode="x unified",
         colorway=[GREEN, BLUE, AMBER],
     )
     figure.update_xaxes(showgrid=False, zeroline=False)
-    figure.update_yaxes(gridcolor="#edf1ee", zeroline=False)
+    figure.update_yaxes(gridcolor="#e5eaf3", zeroline=False)
     return figure
 
 
 def empty(message="No observations available yet"):
     figure = go.Figure()
     figure.add_annotation(text=message, x=0.5, y=0.5, xref="paper", yref="paper",
-                          showarrow=False, font=dict(size=13, color="#89968e"))
+                          showarrow=False, font=dict(size=14, color="#7b8799"))
     figure.update_xaxes(visible=False)
     figure.update_yaxes(visible=False)
     return style(figure)
 
 
-def activity_timeline(rows, historical=False):
+def activity_timeline(rows, historical=False, time_range=None):
     if not rows:
         return empty()
     time_key = "day" if historical else "window_start"
     figure = go.Figure()
-    x = [row[time_key] for row in rows]
+    x = [row[time_key] if historical else to_india_wall_time(row[time_key]) for row in rows]
     for name, key, color in (("Human edits", "human", GREEN), ("Bot edits", "bots", BLUE)):
         values = [(row.get("edits", 0) - row.get("bots", 0)) if historical and key == "human"
                   else row.get(key, 0) for row in rows]
         figure.add_trace(go.Scatter(x=x, y=values, name=name, mode="lines+markers",
                                    line=dict(color=color, width=2.5), marker=dict(size=5),
                                    fill="tozeroy" if key == "human" else None))
+    if not historical:
+        _india_axis(figure, time_range)
+        labels = _india_hover_labels(rows, time_key)
+        for trace in figure.data:
+            trace.customdata = labels
+            trace.hovertemplate = "%{customdata} IST<br>%{y:,}<extra>%{fullData.name}</extra>"
     return style(figure)
 
 
@@ -74,7 +115,7 @@ def bot_split(metrics):
         return empty()
     figure = go.Figure(go.Pie(
         labels=["Human", "Bot"], values=[edits - bots, bots], hole=0.78,
-        marker=dict(colors=[GREEN, "#c8d9e5"]), textinfo="none", sort=False,
+        marker=dict(colors=[GREEN, "#b8d6e6"]), textinfo="none", sort=False,
         hovertemplate="%{label}: %{value:,} (%{percent})<extra></extra>",
     ))
     figure.add_annotation(text=f"{100 * (edits - bots) / edits:.0f}%<br>human",
@@ -83,25 +124,36 @@ def bot_split(metrics):
     return style(figure)
 
 
-def bytes_timeline(rows, historical=False):
+def bytes_timeline(rows, historical=False, time_range=None):
     if not rows:
         return empty()
     figure = go.Figure()
-    x = [row["day" if historical else "window_start"] for row in rows]
+    x = [row["day"] if historical else to_india_wall_time(row["window_start"]) for row in rows]
     for label, key, color in (("Gross movement", "gross_bytes", BLUE), ("Net change", "net_bytes", GREEN)):
         figure.add_trace(go.Bar(x=x, y=[row.get(key) for row in rows], name=label, marker_color=color))
     figure.update_layout(barmode="group")
+    if not historical:
+        _india_axis(figure, time_range)
+        labels = _india_hover_labels(rows, "window_start")
+        for trace in figure.data:
+            trace.customdata = labels
+            trace.hovertemplate = "%{customdata} IST<br>%{y:,}<extra>%{fullData.name}</extra>"
     return style(figure)
 
 
-def baseline_comparison(rows):
+def baseline_comparison(rows, time_range=None):
     if not rows:
         return empty("No matching historical baseline for these windows")
     rows = sorted(rows, key=lambda row: row["window_start"])
     figure = go.Figure()
     for label, key in (("Observed human edits", "edits_human"), ("Historical mean", "avg_edits_human")):
-        figure.add_trace(go.Scatter(x=[r["window_start"] for r in rows], y=[r.get(key) for r in rows],
+        figure.add_trace(go.Scatter(x=[to_india_wall_time(r["window_start"]) for r in rows], y=[r.get(key) for r in rows],
                                    name=label, mode="lines+markers"))
+    _india_axis(figure, time_range)
+    labels = _india_hover_labels(rows, "window_start")
+    for trace in figure.data:
+        trace.customdata = labels
+        trace.hovertemplate = "%{customdata} IST<br>%{y:,}<extra>%{fullData.name}</extra>"
     return style(figure)
 
 
@@ -117,7 +169,7 @@ def relationship_graph(edges):
         if source and target:
             x.extend([source[0], target[0], None])
             y.extend([source[1], target[1], None])
-    figure = go.Figure(go.Scatter(x=x, y=y, mode="lines", line=dict(color="#c4d6ce", width=1), hoverinfo="skip"))
+    figure = go.Figure(go.Scatter(x=x, y=y, mode="lines", line=dict(color="#b7c4d9", width=1), hoverinfo="skip"))
     figure.add_trace(go.Scatter(x=[positions[n][0] for n in names], y=[positions[n][1] for n in names],
                                text=names, mode="markers", marker=dict(size=14, color=GREEN),
                                hovertemplate="%{text}<extra></extra>"))

@@ -10,9 +10,10 @@ WikiPulse Curated Parquet Lake (`historical/data/curated/`):
    events (`CONFIRMED_NEWS`, `BREAKING_NEWS_CANDIDATE`, `EDIT_WAR_CONTROVERSY`, `MAJOR_REWRITE`),
    joining alerts with link-graph spillover edges, revision diffs, subject coordinates, and
    Lift Wing revert-risk calibration. Saves `curated/benchmarks/milestone8_case_studies_demo.json`.
-3. **Pre-Warmed Interactive Demo Server (default / `--serve`)**:
-   Runs the pre-flight check + case-study tour, pre-warms the Dash server cache for instant
-   sub-100ms tab switching during live presentations, and serves `http://127.0.0.1:8080`.
+3. **Interactive Dashboard Server (default)**:
+   With the complete curated bundle, runs the case-study tour and prewarms all five views.
+   With partial local data, starts the available dashboards without prewarming. Serves
+   `http://127.0.0.1:8080` unless `--port` is supplied.
 
 Usage:
     # Run verification + case-study walkthrough and exit (CI / pre-presentation check):
@@ -27,6 +28,7 @@ Usage:
 
 import argparse
 import json
+import socket
 import sys
 import time
 from pathlib import Path
@@ -63,6 +65,56 @@ EXPECTED_BENCHMARK_FILES = (
     "milestone7_scaling_benchmarks.json",
     "milestone7_load_recovery.json",
 )
+REQUIRED_TABLES = (
+    "rc_events", "page_baselines", "rankings_daily", "churn_bot_summary",
+    "page_windows_5m", "page_windows_1h", "alerts", "graph_edges",
+    "revision_diffs", "map_points", "revert_risk_eval",
+)
+WALKTHROUGH_TABLES = (
+    "alerts", "graph_edges", "revision_diffs", "map_points", "revert_risk_eval",
+)
+
+
+def missing_curated_inputs(curated_dir: Path, *, walkthrough_only: bool = False) -> list[str]:
+    """Return absent or empty inputs before Spark tries to read them."""
+    tables = WALKTHROUGH_TABLES if walkthrough_only else REQUIRED_TABLES
+    missing = [
+        f"table {name} ({curated_dir / name})"
+        for name in tables
+        if not (curated_dir / name).is_dir()
+        or next((curated_dir / name).rglob("*.parquet"), None) is None
+    ]
+    if not walkthrough_only:
+        benchmark_dir = curated_dir / "benchmarks"
+        missing.extend(
+            f"benchmark {benchmark_dir / name}"
+            for name in EXPECTED_BENCHMARK_FILES
+            if not (benchmark_dir / name).is_file()
+        )
+    return missing
+
+
+def print_missing_inputs(missing: list[str]) -> None:
+    print("Curated demo data is incomplete:", file=sys.stderr)
+    for item in missing:
+        print(f"  - {item}", file=sys.stderr)
+    print(
+        "Use DATA_SETUP.md to build/download the curated tables. "
+        "For the dashboards supported by the available data, try `./run-demo.sh --port 8082`.",
+        file=sys.stderr,
+    )
+
+
+def ensure_port_available(port: int) -> None:
+    """Report a local port conflict before Spark spends time warming up."""
+    with socket.socket() as listener:
+        listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            listener.bind(("127.0.0.1", port))
+        except OSError as error:
+            raise SystemExit(
+                f"Port {port} is already in use. Stop the existing dashboard or choose another port with --port."
+            ) from error
 
 
 def extract_case_studies_walkthrough(spark, curated_dir: Path) -> dict[str, Any]:
@@ -281,9 +333,37 @@ def main() -> int:
     ap.add_argument("--walkthrough-only", action="store_true", help="Print the 4 case-study walkthrough and exit.")
     args = ap.parse_args()
 
+    walkthrough_only = args.walkthrough_only
+    missing = missing_curated_inputs(args.curated, walkthrough_only=walkthrough_only)
+    if (args.verify_only or walkthrough_only) and missing:
+        print_missing_inputs(missing)
+        return 1
+    full_demo_ready = not missing and not walkthrough_only
+    if not args.verify_only and not walkthrough_only:
+        ensure_port_available(args.port)
+
     t0 = time.time()
     spark = get_spark_session(app_name="WikiPulse-Milestone8-BackupDemo")
     try:
+        if not full_demo_ready and not args.walkthrough_only:
+            print(
+                "Curated backup-demo tables are incomplete. Starting the available WikiPulse dashboards "
+                "without the case-study walkthrough or cache prewarm. Missing data details are available "
+                "with `./run-demo.sh --verify-only`.",
+                file=sys.stderr,
+                flush=True,
+            )
+            paths = DashboardPaths(
+                raw=REPO_ROOT / "data/raw/wikipedia_edits",
+                live=REPO_ROOT / "data/live_activity",
+                history=REPO_ROOT / "data/week2/historical",
+                curated=args.curated,
+            )
+            app = create_app(DashboardDataService(DashboardQueries(spark, paths)))
+            print(f"WikiPulse dashboards: http://127.0.0.1:{args.port}/", flush=True)
+            app.run(host="127.0.0.1", port=args.port, debug=False, use_reloader=False)
+            return 0
+
         demo_summary = extract_case_studies_walkthrough(spark, args.curated)
         if args.walkthrough_only:
             print(

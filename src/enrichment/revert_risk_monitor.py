@@ -50,6 +50,7 @@ from src.config.settings import (
     safe_write_parquet,
 )
 from src.models.schemas import REVERT_RISK_SCHEMA
+from src.enrichment.alert_flags import historical_alert_filter
 
 LIFTWING_CACHE_DIR = CURATED_TABLES["api_cache"] / "liftwing"
 OBSERVATION_WINDOW_HOURS = 48
@@ -209,7 +210,7 @@ def select_candidate_revisions_with_outcomes(
 
     # Identify top alerted pages so investigation view has rich revert-risk records for alerted articles
     top_alert_pages = (
-        alerts_df.filter("historical_alert_flag = true")
+        alerts_df.filter(historical_alert_filter(alerts_df))
         .groupBy("pageid", "title")
         .agg(
             F.max("historical_score").alias("max_score"),

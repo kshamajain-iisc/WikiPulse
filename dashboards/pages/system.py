@@ -28,9 +28,9 @@ def render(data):
         heading("OPERATE / ENGINEERING & HEALTH", "A clear view of the pipeline.",
                 "Track observed ingestion quality, streaming progress, storage, and reproducible experiment evidence."),
         html.Div([
-            metric("RAW RECORDS", number(quality.get("raw_records")), "Current / prior UTC ingestion day", True),
-            metric("ACCEPTED EDITS", number(quality.get("valid_records")), "Revalidated from original payloads"),
-            metric("REJECTED RECORDS", number(quality.get("invalid_records")), "Includes malformed test messages"),
+            metric("RAW RECORDS", number(quality.get("raw_records")), quality.get("scope", "Stored ingestion snapshot"), True),
+            metric("ACCEPTED EDITS", number(quality.get("valid_records")), "Retained after category filtering"),
+            metric("FILTERED EVENTS", number(quality.get("invalid_records")), "May include non-edit categories excluded from curated data"),
             metric("KAFKA → BRONZE LAG", number(data.get("lag")), "Records beyond last committed raw batch"),
         ], className="metric-grid"),
         panel("Streaming progress", "Actual Spark progress; unavailable until the updated jobs emit a batch",

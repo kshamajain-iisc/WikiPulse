@@ -46,6 +46,7 @@ from src.config.settings import (
     safe_write_parquet,
 )
 from src.models.schemas import ALERT_SCHEMA, MAP_POINT_SCHEMA
+from src.enrichment.alert_flags import historical_alert_filter
 
 ACTION_API_URL = WIKIMEDIA_APIS["mediawiki_action_api"]["url"]
 WIKIDATA_API_URL = WIKIMEDIA_APIS["wikidata_action_api"]["url"]
@@ -242,7 +243,7 @@ def resolve_alert_locations(
             F.max("historical_score").alias("historical_score"),
             F.max_by("alert_type", "historical_score").alias("alert_type"),
             F.max("edits_human").alias("edits_human"),
-            F.max(F.col("historical_alert_flag").cast("int")).alias("is_hist_alert"),
+            F.max(historical_alert_filter(alerts_df).cast("int")).alias("is_hist_alert"),
         )
         .orderBy(F.desc("is_hist_alert"), F.desc("historical_score"), F.desc("edits_human"))
         .limit(max_pages)
@@ -476,6 +477,7 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="Milestone 6.2: Build Global Geospatial Subject Map (`curated/map_points`).")
     ap.add_argument("--max-pages", type=int, default=160, help="Number of alerted article subjects to resolve.")
     ap.add_argument("--offline", action="store_true", help="Use cached responses only.")
+    ap.add_argument("--skip-alert-update", action="store_true", help="Build map_points without rewriting the alerts table.")
     args = ap.parse_args()
 
     print("=" * 78)
@@ -509,9 +511,13 @@ def main() -> int:
     print(f"    • Location source breakdown: {geo_stats['location_source_breakdown']}")
     print(f"    • Location quality tags    : {geo_stats['location_quality_breakdown']}")
 
-    print("\n[Step 2] Updating `has_location` flag on `curated/alerts`...")
-    alerts_with_loc = update_alerts_has_location(spark, alerts_df, saved_map)
-    print(f"  ✓ Updated `curated/alerts` (`{alerts_with_loc:,}` alert windows now linked to resolved subject coordinates)")
+    alerts_with_loc = 0
+    if not args.skip_alert_update:
+        print("\n[Step 2] Updating `has_location` flag on `curated/alerts`...")
+        alerts_with_loc = update_alerts_has_location(spark, alerts_df, saved_map)
+        print(f"  ✓ Updated `curated/alerts` (`{alerts_with_loc:,}` alert windows now linked to resolved subject coordinates)")
+    else:
+        print("\n[Step 2] Skipping alerts rewrite; the live alert table is left intact.")
 
     print("\n  Sample Located Article Subjects (Sorted by Historical Score):")
     (

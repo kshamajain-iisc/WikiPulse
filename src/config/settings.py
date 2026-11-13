@@ -4,6 +4,9 @@ import os
 import sys
 from pathlib import Path
 from typing import Any, Dict
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # ---------------------------------------------------------------------------
 # 1. Directory & Storage Layout
@@ -32,11 +35,7 @@ def _resolve_historical_data_dir() -> Path:
 HISTORICAL_DATA_DIR = _resolve_historical_data_dir()
 RAW_RC_DIR = HISTORICAL_DATA_DIR / "enwiki_recentchanges"
 RAW_REVISIONS_DIR = HISTORICAL_DATA_DIR / "enwiki_revisions"
-RAW_ANALYTICS_DIR = (
-    Path(os.environ["WIKIPULSE_DATA_DIR"]).expanduser().resolve() / "analytics"
-    if os.environ.get("WIKIPULSE_DATA_DIR")
-    else REPO_ROOT / "data" / "analytics"
-)
+RAW_ANALYTICS_DIR = HISTORICAL_DATA_DIR / "analytics"
 CURATED_DIR = HISTORICAL_DATA_DIR / "curated"
 
 # Curated Parquet table paths (Milestones 4, 5, 6)

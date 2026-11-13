@@ -5,8 +5,10 @@ all child processes and stops Kafka if this invocation started it. Data is retai
 """
 
 import argparse
+import json
 import fcntl
 import os
+import secrets
 import shutil
 import signal
 import socket
@@ -14,6 +16,7 @@ import subprocess
 import sys
 import time
 from contextlib import ExitStack
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 from urllib.error import URLError
@@ -24,7 +27,61 @@ from src.kafka_common import KAFKA_SERVERS, KAFKA_TOPIC
 ROOT = Path(__file__).resolve().parents[1]
 LIVE_DIRECTORY = ROOT / "data/live_activity"
 LOG_DIRECTORY = ROOT / "logs/local"
+SUPERVISOR_STATE = ROOT / "data/run/local_supervisor.json"
+RESTART_REQUEST = ROOT / "data/run/restart_stream.request.json"
+STREAM_SERVICES = (
+    "collector", "bronze", "windows-5m", "windows-1h", "detection-5m", "detection-1h",
+)
 STARTUP_TIMEOUT_SECONDS = 240
+
+
+def write_supervisor_state(processes, state: str, error: str | None = None) -> None:
+    """Publish process liveness for the local dashboard without exposing credentials."""
+    services = {
+        name: {"pid": process.pid, "running": process.poll() is None}
+        for name, process in processes.children
+    }
+    payload = {
+        "state": state,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "services": services,
+        "error": error,
+    }
+    temporary = SUPERVISOR_STATE.with_suffix(".tmp")
+    temporary.write_text(json.dumps(payload))
+    temporary.replace(SUPERVISOR_STATE)
+
+
+def start_stream_services(processes, lock_directory: Path) -> None:
+    """Start/restart the stream children in checkpoint-safe dependency order."""
+    processes.start("collector", "src.collector")
+    bronze_ready = lock_directory / "bronze.ready"
+    bronze_ready.unlink(missing_ok=True)
+    processes.start("bronze", "src.stream_measurements", "bronze", "--ready-file", str(bronze_ready))
+    processes.wait_for("the raw ingestion query", bronze_ready.is_file)
+
+    raw_path = (ROOT / os.getenv("RAW_PARQUET_PATH", "data/raw/wikipedia_edits")).resolve()
+    schema_path = LIVE_DIRECTORY / "bronze_schema.json"
+    processes.wait_for(
+        "the first committed raw Spark batch",
+        lambda: raw_output_ready(schema_path, raw_path),
+    )
+    for duration in ("5m", "1h"):
+        ready_file = lock_directory / f"windows-{duration}.ready"
+        ready_file.unlink(missing_ok=True)
+        processes.start(
+            f"windows-{duration}", "src.stream_measurements", "windows",
+            "--duration", duration, "--ready-file", str(ready_file),
+        )
+        processes.wait_for(f"the {duration} measurement query", ready_file.is_file)
+    for duration in ("5m", "1h"):
+        ready_file = lock_directory / f"detection-{duration}.ready"
+        ready_file.unlink(missing_ok=True)
+        processes.start(
+            f"detection-{duration}", "src.detection", "stream",
+            "--duration", duration, "--ready-file", str(ready_file),
+        )
+        processes.wait_for(f"the {duration} alert query", ready_file.is_file)
 
 
 def run_command(arguments: list[str], timeout: int = 30) -> str:
@@ -53,9 +110,20 @@ def validate_prerequisites(port: int) -> None:
     try:
         run_command(["docker", "info", "--format", "{{.ServerVersion}}"], timeout=10)
     except (RuntimeError, subprocess.TimeoutExpired) as error:
+        try:
+            context = run_command(["docker", "context", "show"], timeout=5)
+        except (RuntimeError, subprocess.TimeoutExpired):
+            context = "default"
+        if context == "colima":
+            recovery = "Restart Colima with 'colima stop && colima start'."
+        elif context == "desktop-linux":
+            recovery = "Start Docker Desktop and wait for its engine to become ready."
+        elif "podman" in context.lower():
+            recovery = "Start the Podman VM with 'podman machine start'."
+        else:
+            recovery = f"Start the Docker engine for context '{context}'."
         raise RuntimeError(
-            "The container engine is unavailable. Start Docker Desktop, or run "
-            "'podman machine start' if your Docker context uses Podman, then retry."
+            f"The Docker engine for context '{context}' is unavailable. {recovery} Then retry."
         ) from error
 
     # Compose advertises this local address; accepting another broker here would
@@ -84,13 +152,14 @@ class LocalProcesses:
         self.resources = resources
         self.children: list[tuple[str, subprocess.Popen]] = []
 
-    def start(self, name: str, module: str, *arguments: str) -> None:
+    def start(self, name: str, module: str, *arguments: str, extra_env: dict | None = None) -> None:
         """Start one service with a separate readable log file."""
         log_path = LOG_DIRECTORY / f"{name}.log"
         log_file = self.resources.enter_context(log_path.open("a"))
         environment = os.environ.copy()
         environment["PYTHONUNBUFFERED"] = "1"
         environment.setdefault("SPARK_LOCAL_IP", "127.0.0.1")
+        environment.update(extra_env or {})
         process = subprocess.Popen(
             [sys.executable, "-m", module, *arguments],
             cwd=ROOT,
@@ -101,6 +170,27 @@ class LocalProcesses:
         )
         self.children.append((name, process))
         print(f"Started {name}; log: {log_path}", flush=True)
+
+    def stop_named(self, names: tuple[str, ...]) -> None:
+        """Stop and forget selected child groups, preserving their output/checkpoints."""
+        targets = [(name, process) for name, process in self.children if name in names]
+        for shutdown_signal, grace_seconds in (
+            (signal.SIGINT, 20), (signal.SIGTERM, 5), (signal.SIGKILL, 5),
+        ):
+            for _, process in reversed(targets):
+                try:
+                    os.killpg(process.pid, shutdown_signal)
+                except ProcessLookupError:
+                    pass
+            deadline = time.monotonic() + grace_seconds
+            for _, process in targets:
+                try:
+                    process.wait(timeout=max(0, deadline - time.monotonic()))
+                except subprocess.TimeoutExpired:
+                    pass
+            if all(process.poll() is not None for _, process in targets):
+                break
+        self.children = [(name, process) for name, process in self.children if name not in names]
 
     def check_running(self) -> None:
         """Fail promptly if any required service exits, even with exit code zero."""
@@ -229,41 +319,16 @@ def main() -> int:
                 "--partitions", "3", "--replication-factor", "1",
             ])
 
-            processes.start("dashboard", "dashboards.app", "--port", str(args.port))
+            control_token = secrets.token_urlsafe(32)
+            processes.start(
+                "dashboard", "dashboards.app", "--port", str(args.port),
+                extra_env={"WIKIPULSE_CONTROL_TOKEN": control_token},
+            )
             processes.wait_for("the dashboard server", lambda: dashboard_ready(args.port))
             print(f"Dashboard: http://127.0.0.1:{args.port}/", flush=True)
-            processes.start("collector", "src.collector")
-            bronze_ready = lock_directory / "bronze.ready"
-            bronze_ready.unlink(missing_ok=True)
-            processes.start(
-                "bronze", "src.stream_measurements", "bronze", "--ready-file", str(bronze_ready)
-            )
-            processes.wait_for("the raw ingestion query", bronze_ready.is_file)
-
-            raw_path = (ROOT / os.getenv("RAW_PARQUET_PATH", "data/raw/wikipedia_edits")).resolve()
-            schema_path = LIVE_DIRECTORY / "bronze_schema.json"
-            # Windows need the producer schema and a committed raw batch, not just
-            # a started Python process. First-time connector downloads may take time.
-            processes.wait_for(
-                "the first committed raw Spark batch",
-                lambda: raw_output_ready(schema_path, raw_path),
-            )
-            for duration in ("5m", "1h"):
-                ready_file = lock_directory / f"windows-{duration}.ready"
-                ready_file.unlink(missing_ok=True)
-                processes.start(
-                    f"windows-{duration}", "src.stream_measurements", "windows",
-                    "--duration", duration, "--ready-file", str(ready_file),
-                )
-                processes.wait_for(f"the {duration} measurement query", ready_file.is_file)
-            # One detector per finalized duration, each with its own checkpoint.
-            # The detector also creates the alert topic when starting standalone.
-            for duration in ("5m", "1h"):
-                ready_file = lock_directory / f"detection-{duration}.ready"
-                ready_file.unlink(missing_ok=True)
-                processes.start(f"detection-{duration}", "src.detection", "stream",
-                                "--duration", duration, "--ready-file", str(ready_file))
-                processes.wait_for(f"the {duration} alert query", ready_file.is_file)
+            write_supervisor_state(processes, "starting")
+            start_stream_services(processes, lock_directory)
+            write_supervisor_state(processes, "running")
             print(
                 "All services launched. Select 5m or 1h on the dashboard. "
                 "Finalized results require later events to advance the watermark.\n"
@@ -271,7 +336,23 @@ def main() -> int:
                 flush=True,
             )
             while True:
-                processes.check_running()
+                try:
+                    processes.check_running()
+                    write_supervisor_state(processes, "running")
+                except RuntimeError as error:
+                    write_supervisor_state(processes, "broken", str(error))
+
+                if RESTART_REQUEST.exists():
+                    RESTART_REQUEST.unlink(missing_ok=True)
+                    write_supervisor_state(processes, "restarting")
+                    try:
+                        processes.stop_named(STREAM_SERVICES)
+                        start_stream_services(processes, lock_directory)
+                        write_supervisor_state(processes, "running")
+                        print("Stream services restarted; checkpoints and stored data were preserved.", flush=True)
+                    except (RuntimeError, OSError, subprocess.TimeoutExpired) as error:
+                        write_supervisor_state(processes, "broken", str(error))
+                        print(f"Stream restart failed: {error}", file=sys.stderr, flush=True)
                 time.sleep(1)
         except KeyboardInterrupt:
             print("\nStopping local services…", flush=True)
@@ -279,6 +360,7 @@ def main() -> int:
             print(f"Startup/runtime error: {error}", file=sys.stderr)
             exit_code = 1
         finally:
+            write_supervisor_state(processes, "stopped")
             processes.stop()
             if owns_kafka:
                 try:

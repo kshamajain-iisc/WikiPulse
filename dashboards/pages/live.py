@@ -9,13 +9,24 @@ from dashboards.components import graph, heading, metric_row, notice, panel, tab
 def render(data):
     metrics = data.get("metrics", {})
     alerts = data.get("alerts", [])
+    time_range = data.get("range")
+    scope = data.get("scope", "selected India Standard Time event-time range")
+    bucket = data.get("bucket", "5 minutes")
+    if data.get("view") == "live":
+        description = f"Live event data · {scope}. Charts use {bucket} buckets and are clipped to the selected range."
+        alert_description = (
+            f"Finalized alert windows overlapping the selected {scope}; charts use current live events."
+        )
+    else:
+        description = f"{data.get('view', 'finalized').title()} activity · {scope}. Source: {data.get('data_source', 'stream windows')}."
+        alert_description = "Finalized alerts within the selected event-time range."
     return [
         heading("OBSERVE / LIVE PULSE", "Wikipedia, in motion.",
-                "Follow editing activity, contributor patterns, and the pages changing right now."),
+                description),
         metric_row(metrics),
         html.Div([
-            panel("The editing pulse", "Human and bot edits by UTC event-time window",
-                  graph(charts.activity_timeline(data.get("timeline", [])))),
+            panel("The editing pulse", "Human and bot edits by India Standard Time event-time window",
+                  graph(charts.activity_timeline(data.get("timeline", []), time_range=time_range))),
             panel("Who's contributing?", "Human versus automated edits",
                   graph(charts.bot_split(metrics))),
         ], className="chart-grid wide-left"),
@@ -23,9 +34,9 @@ def render(data):
             panel("Articles in focus", "Top 10 articles by edits · click an article to investigate",
                   graph(charts.ranking(data.get("rankings", [])), "page-ranking")),
             panel("Knowledge churn", "Gross byte movement and net content change",
-                  graph(charts.bytes_timeline(data.get("timeline", [])))),
+                  graph(charts.bytes_timeline(data.get("timeline", []), time_range=time_range))),
         ], className="chart-grid"),
-        panel("Knowledge-shift feed", "Finalized alerts for the selected duration · recent 200 records · independent of live preview",
+        panel("Knowledge-shift feed", alert_description,
               table(alerts, [("Article", "title"), ("Type", "alert_type"),
                              ("Historical score", "historical_score"), ("Confidence", "confidence"),
                              ("Reasons", "reasons")], True)

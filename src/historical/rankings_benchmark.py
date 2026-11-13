@@ -201,6 +201,13 @@ def main() -> int:
     print(" WIKIPULSE MILESTONE 4.3: HISTORICAL RANKINGS, CHURN & BENCHMARKS")
     print("=" * 76)
 
+    raw_archives = sorted(RAW_RC_DIR.glob("rc_*.jsonl.gz"))
+    if not raw_archives:
+        print(f"No rc_YYYY-MM-DD.jsonl.gz archives found in {RAW_RC_DIR}.")
+        return 1
+    sample_gz = raw_archives[0]
+    sample_day = sample_gz.stem.removeprefix("rc_")
+
     t0 = time.time()
     spark = get_spark_session(app_name="WikiPulse-Milestone4-Rankings")
 
@@ -337,7 +344,6 @@ def main() -> int:
     # 3. Manual Sample Audit & RDD vs DataFrame Benchmark
     # -----------------------------------------------------------------------
     print("[3/4] Running Manual Sample Audit & RDD vs. DataFrame Benchmark...")
-    sample_gz = RAW_RC_DIR / "rc_2026-09-16.jsonl.gz"
     manual_audit = verify_manual_churn_sample(spark, sample_gz, sample_size=2000)
     print(
         f"  ✓ Manual Sample Audit (2,000 events): exact_match={manual_audit['spark_exact_match']} "
@@ -358,7 +364,7 @@ def main() -> int:
     print("[4/4] Benchmarking Dashboard Query Latency (JSONL.gz vs Stored Parquet)...")
     t_json0 = time.time()
     _ = (
-        spark.read.json(str(RAW_RC_DIR / "rc_2026-09-16.jsonl.gz"))
+        spark.read.json(str(sample_gz))
         .filter("ns = 0 AND type IN ('edit', 'new') AND bot = false")
         .groupBy("title")
         .count()
@@ -369,9 +375,10 @@ def main() -> int:
     json_1day_query_sec = round(time.time() - t_json0, 3)
 
     t_pq_stored0 = time.time()
+    rank_sample_day = rc_df.agg(F.min("day").alias("day")).first()["day"]
     top_ranked_sample = (
         safe_read_parquet(spark, rankings_out)
-        .filter("day = DATE '2026-09-16'")
+        .filter(F.col("day") == F.lit(rank_sample_day))
         .orderBy("baseline_surge_rank")
         .limit(20)
         .collect()
@@ -394,6 +401,7 @@ def main() -> int:
         "rdd_vs_dataframe_benchmark": rdd_vs_df,
         "query_latency_benchmark": {
             "raw_jsonl_gz_1day_top20_sec": json_1day_query_sec,
+            "raw_jsonl_gz_sample_day": sample_day,
             "stored_parquet_rankings_top20_sec": stored_rankings_query_sec,
             "stored_parquet_46day_churn_series_sec": stored_churn_query_sec,
             "meets_under_2s_target": stored_rankings_query_sec < 2.0 and stored_churn_query_sec < 2.0,
@@ -407,7 +415,7 @@ def main() -> int:
         f"Stored 46d Churn Parquet = {stored_churn_query_sec}s (<2.0s target met!)"
     )
 
-    print("\n  Sample Historical Surge vs. Raw Rank (Sept 16, 2026):")
+    print(f"\n  Sample Historical Surge vs. Raw Rank ({rank_sample_day}):")
     for r in top_ranked_sample[:5]:
         print(
             f"    • #{r['baseline_surge_rank']:<2} (raw #{r['raw_edit_rank']:<3}) {r['title']:<38} "

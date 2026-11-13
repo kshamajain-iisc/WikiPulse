@@ -50,6 +50,7 @@ from src.config.settings import (
     safe_write_parquet,
 )
 from src.models.schemas import GRAPH_EDGE_SCHEMA, REVISION_DIFF_SCHEMA
+from src.enrichment.alert_flags import historical_alert_filter
 
 ACTION_API_URL = WIKIMEDIA_APIS["mediawiki_action_api"]["url"]
 GRAPH_CACHE_DIR = CURATED_TABLES["api_cache"] / "graph"
@@ -252,7 +253,7 @@ def build_graph_edges_df(
     """Build `curated/graph_edges` conforming to `GRAPH_EDGE_SCHEMA`."""
     # Pick top alerted articles stratified across alert types so all 4 alert classes are represented
     top_alert_rows = (
-        alerts_df.filter("historical_alert_flag = true")
+        alerts_df.filter(historical_alert_filter(alerts_df))
         .groupBy("pageid", "title", "alert_type")
         .agg(
             F.max("historical_score").alias("max_score"),
@@ -437,6 +438,59 @@ def build_graph_edges_df(
                 )
             )
 
+    # The local/live alert table can describe pages outside the retained historical
+    # window. When that happens, retain useful relationship evidence from pages
+    # actually edited in the same stored five-minute window. Label these separately
+    # from Wikipedia links so the UI does not imply a direct article relationship.
+    co_edit_fallback_edges = 0
+    if not edge_rows:
+        w_window = Window.partitionBy("window_start").orderBy(
+            F.desc("velocity_zscore"), F.desc("edits_human"), F.asc("title")
+        )
+        co_edit_rows = (
+            win_5m_df.filter((F.col("ns") == 0) & (F.col("edits_human") >= 1))
+            .withColumn("_rank", F.row_number().over(w_window))
+            .filter(F.col("_rank") <= 4)
+            .groupBy("window_start")
+            .agg(
+                F.max("velocity_zscore").alias("window_score"),
+                F.collect_list(F.struct(
+                    "pageid", "title", "edits_human", "distinct_human_editors"
+                )).alias("pages"),
+            )
+            .filter(F.size("pages") >= 2)
+            .orderBy(F.desc("window_score"), F.desc("window_start"))
+            .limit(100)
+            .collect()
+        )
+        for group in co_edit_rows:
+            pages = sorted(
+                group["pages"],
+                key=lambda page: (-int(page["edits_human"] or 0), str(page["title"] or "")),
+            )
+            if len(pages) < 2:
+                continue
+            source = pages[0]
+            for target in pages[1:4]:
+                src_pageid = int(source["pageid"] or 0)
+                tgt_pageid = int(target["pageid"] or 0)
+                src_title = str(source["title"] or "")
+                tgt_title = str(target["title"] or "")
+                if (not src_pageid or not tgt_pageid or not src_title or not tgt_title
+                        or src_pageid == tgt_pageid or src_title == tgt_title):
+                    continue
+                win_start = group["window_start"]
+                edge_key = f"{src_pageid}::{tgt_pageid}::co_edit::{win_start.isoformat()}"
+                edge_id = "edg_" + hashlib.sha256(edge_key.encode("utf-8")).hexdigest()[:16]
+                edge_rows.append((
+                    edge_id, src_pageid, src_title, tgt_pageid, tgt_title,
+                    "co_edit_window", win_start, True,
+                    int(target["edits_human"] or 0),
+                    int(target["distinct_human_editors"] or 0),
+                    snapshot_now, False,
+                ))
+                co_edit_fallback_edges += 1
+
     edges_df = spark.createDataFrame(edge_rows, schema=GRAPH_EDGE_SCHEMA).dropDuplicates(["edge_id"])
     stats = {
         "alerted_pages_enriched": len(selected_alerts),
@@ -444,6 +498,7 @@ def build_graph_edges_df(
         "co_edited_spillover_edges": co_edited_edges_count,
         "outlink_edges": sum(1 for r in edge_rows if r[5] == "outlink"),
         "backlink_edges": sum(1 for r in edge_rows if r[5] == "backlink"),
+        "co_edit_fallback_edges": co_edit_fallback_edges,
     }
     return edges_df, stats
 
@@ -458,7 +513,7 @@ def build_revision_diffs_df(
 ) -> tuple[DataFrame, dict[str, Any]]:
     """Fetch and parse revision diffs for alerted articles, returning `(diffs_df, stats)`."""
     top_alert_pages = (
-        alerts_df.filter("historical_alert_flag = true")
+        alerts_df.filter(historical_alert_filter(alerts_df))
         .groupBy("pageid", "title", "day")
         .agg(
             F.max("historical_score").alias("max_score"),

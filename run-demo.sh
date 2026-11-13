@@ -3,7 +3,7 @@ set -euo pipefail
 
 # WikiPulse 1-Command Presentation & Backup Demo Launcher
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+PROJECT_ROOT="${SCRIPT_DIR}"
 
 if [[ -x "${SCRIPT_DIR}/.venv/bin/python3" ]]; then
     PYTHON_BIN="${SCRIPT_DIR}/.venv/bin/python3"

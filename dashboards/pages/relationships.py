@@ -3,7 +3,7 @@
 from dash import html
 
 from dashboards import charts
-from dashboards.components import graph, heading, metric, number, panel, table
+from dashboards.components import graph, heading, metric, notice, number, panel, table
 
 
 def render(data):
@@ -11,7 +11,12 @@ def render(data):
     located = [point for point in points if point.get("has_coordinates")]
     return [
         heading("EXPLORE / RELATIONSHIPS & PLACES", "Knowledge doesn't change in isolation.",
-                "Explore recorded article relationships and the geography of their subjects, never editor locations."),
+                "Explore Wikipedia links, same-window co-edit evidence, and subject geography. Editor locations are never used."),
+        *([notice(
+            "Enrichment data missing",
+            "Missing populated tables: " + ", ".join(data["missing_sources"])
+            + ". Build link/revision evidence with src/enrichment/graph_and_diffs.py and subject locations with src/enrichment/geospatial_map.py.",
+        )] if data.get("missing_sources") else []),
         html.Div([
             metric("DISPLAYED LINKS", number(len(edges)), "Up to 200 recorded edges", True),
             metric("DISPLAYED SUBJECTS", number(len(points)), "Up to 200 location records"),

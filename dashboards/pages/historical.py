@@ -11,8 +11,14 @@ from dashboards.components import graph, heading, metric_row, notice, panel, tab
 def render(data):
     metrics = data.get("metrics", {})
     first, last = metrics.get("first_day"), metrics.get("last_day")
+    missing_sources = data.get("missing_sources", [])
     coverage = "No canonical historical dataset is available for this date range."
-    if first and last:
+    if missing_sources:
+        coverage = (
+            "Historical summaries are missing: " + ", ".join(missing_sources)
+            + ". Build them with the historical setup steps in DATA_SETUP.md."
+        )
+    elif first and last:
         expected = (date.fromisoformat(last) - date.fromisoformat(first)).days + 1
         observed = metrics.get("observed_days", 0)
         coverage = f"Source range {first} → {last} · {observed} observed dates / {expected} calendar dates."
