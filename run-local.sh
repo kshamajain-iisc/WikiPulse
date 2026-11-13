@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Bootstrap the project environment, then let Python supervise local services.
+# First-run tools and .env setup are documented in docs/local-prerequisites.md.
 set -euo pipefail
 cd -- "$(dirname -- "$0")"
 
@@ -38,4 +39,5 @@ then
     .venv/bin/python -m pip install -r requirements.txt
 fi
 
+# The supervisor replaces the existing WikiPulse stack before starting a fresh one.
 exec .venv/bin/python -m src.run_local "$@"

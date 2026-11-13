@@ -22,7 +22,7 @@ from typing import Callable
 from urllib.error import URLError
 from urllib.request import urlopen
 
-from src.kafka_common import KAFKA_SERVERS, KAFKA_TOPIC
+from src.kafka_common import KAFKA_ALERT_TOPIC, KAFKA_SERVERS, KAFKA_TOPIC
 
 ROOT = Path(__file__).resolve().parents[1]
 LIVE_DIRECTORY = ROOT / "data/live_activity"
@@ -43,6 +43,7 @@ def write_supervisor_state(processes, state: str, error: str | None = None) -> N
     }
     payload = {
         "state": state,
+        "supervisor_pid": os.getpid(),
         "updated_at": datetime.now(timezone.utc).isoformat(),
         "services": services,
         "error": error,
@@ -54,7 +55,13 @@ def write_supervisor_state(processes, state: str, error: str | None = None) -> N
 
 def start_stream_services(processes, lock_directory: Path) -> None:
     """Start/restart the stream children in checkpoint-safe dependency order."""
+    collector_log = LOG_DIRECTORY / "collector.log"
+    collector_log_offset = collector_log.stat().st_size if collector_log.exists() else 0
     processes.start("collector", "src.collector")
+    processes.wait_for(
+        "the Wikimedia EventStreams connection",
+        lambda: log_contains_since(collector_log, collector_log_offset, "EventStreams connected"),
+    )
     bronze_ready = lock_directory / "bronze.ready"
     bronze_ready.unlink(missing_ok=True)
     processes.start("bronze", "src.stream_measurements", "bronze", "--ready-file", str(bronze_ready))
@@ -84,6 +91,16 @@ def start_stream_services(processes, lock_directory: Path) -> None:
         processes.wait_for(f"the {duration} alert query", ready_file.is_file)
 
 
+def log_contains_since(path: Path, offset: int, text: str) -> bool:
+    """Match a fresh service log entry, ignoring messages from older runs."""
+    try:
+        with path.open("r") as log_file:
+            log_file.seek(offset)
+            return text in log_file.read()
+    except OSError:
+        return False
+
+
 def run_command(arguments: list[str], timeout: int = 30) -> str:
     """Run a setup command and report a concise failure without hiding its cause."""
     result = subprocess.run(
@@ -100,7 +117,7 @@ def run_command(arguments: list[str], timeout: int = 30) -> str:
     return result.stdout.strip()
 
 
-def validate_prerequisites(port: int) -> None:
+def validate_prerequisites(port: int, *, check_port: bool = True) -> None:
     """Check local configuration before starting any services."""
     for executable in ("docker", "java"):
         if shutil.which(executable) is None:
@@ -135,6 +152,12 @@ def validate_prerequisites(port: int) -> None:
     user_agent = os.getenv("WIKIMEDIA_USER_AGENT", "")
     if not user_agent or "example.com" in user_agent:
         raise RuntimeError("Set a real WIKIMEDIA_USER_AGENT contact in .env before starting.")
+    if check_port:
+        check_port_available(port)
+
+
+def check_port_available(port: int) -> None:
+    """Fail if a process still owns the dashboard port after cleanup."""
     with socket.socket() as listener:
         # Match HTTPServer's address reuse behavior so TIME_WAIT from a clean
         # dashboard shutdown does not incorrectly block an immediate restart.
@@ -143,6 +166,205 @@ def validate_prerequisites(port: int) -> None:
             listener.bind(("127.0.0.1", port))
         except OSError as error:
             raise RuntimeError(f"Dashboard port {port} is busy; choose another with --port.") from error
+
+
+def read_supervisor_state() -> dict:
+    try:
+        return json.loads(SUPERVISOR_STATE.read_text())
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def lock_is_held(lock_file) -> bool:
+    try:
+        fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        return True
+    fcntl.flock(lock_file, fcntl.LOCK_UN)
+    return False
+
+
+def process_parent_pid(pid: int) -> int | None:
+    """Return a process's parent PID on macOS/Linux, if it is still running."""
+    try:
+        result = subprocess.run(
+            ["ps", "-o", "ppid=", "-p", str(pid)],
+            text=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=5,
+        )
+        return int(result.stdout.strip()) if result.returncode == 0 else None
+    except (OSError, ValueError, subprocess.TimeoutExpired):
+        return None
+
+
+def is_wikipulse_service(pid: int) -> bool:
+    """Guard stale PID cleanup against signaling an unrelated reused PID."""
+    try:
+        result = subprocess.run(
+            ["ps", "-o", "command=", "-p", str(pid)],
+            text=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=5,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    command = result.stdout.strip()
+    return str(ROOT) in command and any(
+        marker in command for marker in (
+            "src.collector", "src.stream_measurements", "src.detection", "dashboards.app",
+        )
+    )
+
+
+def stop_process_group(pid: int, description: str, timeout: float = 25) -> None:
+    """Gracefully stop a known WikiPulse process group, then force it if needed."""
+    try:
+        os.killpg(pid, signal.SIGINT)
+    except ProcessLookupError:
+        return
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            os.killpg(pid, 0)
+        except ProcessLookupError:
+            return
+        time.sleep(0.25)
+    try:
+        os.killpg(pid, signal.SIGTERM)
+    except ProcessLookupError:
+        return
+    time.sleep(1)
+    try:
+        os.killpg(pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+    print(f"Stopped previous {description} (PID {pid}).", flush=True)
+
+
+def listener_pids(port: int) -> list[int]:
+    """Find listener PIDs using lsof when available (macOS/Linux)."""
+    if shutil.which("lsof") is None:
+        return []
+    try:
+        result = subprocess.run(
+            ["lsof", "-nP", "-t", f"-iTCP:{port}", "-sTCP:LISTEN"],
+            text=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=5,
+        )
+        return sorted({int(line) for line in result.stdout.splitlines() if line.strip().isdigit()})
+    except (OSError, ValueError, subprocess.TimeoutExpired):
+        return []
+
+
+def listener_is_from_repo(pid: int) -> bool:
+    """Use the listener's working directory to identify direct demo launches."""
+    if shutil.which("lsof") is None:
+        return False
+    try:
+        result = subprocess.run(
+            ["lsof", "-nP", "-p", str(pid)],
+            text=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=5,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return any(
+        line.split()[-1] == str(ROOT)
+        for line in result.stdout.splitlines()
+        if " cwd " in line
+    )
+
+
+def process_descendants(root_pid: int) -> list[int]:
+    """Collect a process tree so direct Dash launches do not orphan Spark JVMs."""
+    try:
+        result = subprocess.run(
+            ["ps", "-axo", "pid=,ppid="],
+            text=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=5,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return []
+    children: dict[int, list[int]] = {}
+    for line in result.stdout.splitlines():
+        fields = line.split()
+        if len(fields) == 2 and fields[0].isdigit() and fields[1].isdigit():
+            children.setdefault(int(fields[1]), []).append(int(fields[0]))
+    ordered: list[int] = []
+    pending = list(children.get(root_pid, ()))
+    while pending:
+        pid = pending.pop(0)
+        ordered.append(pid)
+        pending.extend(children.get(pid, ()))
+    return list(reversed(ordered))
+
+
+def stop_previous_stack(lock_file, port: int) -> None:
+    """Stop the prior managed stack and a WikiPulse dashboard left on its port."""
+    state = read_supervisor_state()
+    if lock_is_held(lock_file):
+        supervisor_pid = state.get("supervisor_pid")
+        if not isinstance(supervisor_pid, int):
+            # Older supervisors did not publish their own PID. Their service
+            # children were started by the supervisor, so recover it from one.
+            for service in state.get("services", {}).values():
+                child_pid = service.get("pid") if isinstance(service, dict) else None
+                if isinstance(child_pid, int):
+                    supervisor_pid = process_parent_pid(child_pid)
+                    if supervisor_pid:
+                        break
+        if not isinstance(supervisor_pid, int):
+            raise RuntimeError(
+                "The WikiPulse launcher lock is held, but its process could not be identified safely. "
+                "Stop the existing WikiPulse launcher and retry."
+            )
+        try:
+            os.kill(supervisor_pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+        deadline = time.monotonic() + 35
+        while time.monotonic() < deadline and lock_is_held(lock_file):
+            time.sleep(0.25)
+        if lock_is_held(lock_file):
+            raise RuntimeError(f"Previous WikiPulse launcher (PID {supervisor_pid}) did not stop.")
+        print(f"Stopped previous WikiPulse launcher (PID {supervisor_pid}).", flush=True)
+    else:
+        # Recover orphaned children if an earlier launcher was killed without
+        # running its cleanup handler. State contains only this project's PIDs.
+        for service in state.get("services", {}).values():
+            pid = service.get("pid") if isinstance(service, dict) else None
+            if isinstance(pid, int) and pid > 1 and service.get("running"):
+                if not is_wikipulse_service(pid):
+                    continue
+                try:
+                    os.kill(pid, 0)
+                except ProcessLookupError:
+                    continue
+                stop_process_group(pid, "WikiPulse service")
+
+    # The backup dashboard is sometimes launched directly, outside the local
+    # supervisor. Replace it only when lsof identifies this repo as its cwd.
+    for pid in listener_pids(port):
+        if not listener_is_from_repo(pid):
+            raise RuntimeError(
+                f"Dashboard port {port} is occupied by another process (PID {pid}); "
+                "stop it before starting WikiPulse."
+            )
+        descendants = process_descendants(pid)
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except ProcessLookupError:
+            continue
+        # A directly launched Dash backup demo can own a separate PySpark JVM.
+        # Stop the captured descendants too, since they are outside our process
+        # supervisor's session and would otherwise survive the dashboard PID.
+        for child_pid in descendants:
+            try:
+                os.kill(child_pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+        deadline = time.monotonic() + 15
+        while time.monotonic() < deadline:
+            if pid not in listener_pids(port):
+                break
+            time.sleep(0.25)
+        if pid in listener_pids(port):
+            os.kill(pid, signal.SIGKILL)
+        print(f"Stopped previous WikiPulse dashboard (PID {pid}).", flush=True)
 
 
 class LocalProcesses:
@@ -280,11 +502,12 @@ def main() -> int:
     lock_directory.mkdir(parents=True, exist_ok=True)
     with ExitStack() as resources:
         lock_file = resources.enter_context((lock_directory / "local.lock").open("a"))
-        try:
-            fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
-            print("WikiPulse is already running through this launcher.", file=sys.stderr)
-            return 1
+        if args.check:
+            try:
+                fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                print("WikiPulse is already running through this launcher.", file=sys.stderr)
+                return 1
 
         # Service managers commonly use SIGTERM; handle it like terminal Ctrl+C.
         def request_shutdown(signum, frame):
@@ -296,15 +519,24 @@ def main() -> int:
         owns_kafka = False
         exit_code = 0
         try:
-            validate_prerequisites(args.port)
+            validate_prerequisites(args.port, check_port=args.check)
             if args.check:
                 print("Local prerequisites are ready.")
                 return 0
+            stop_previous_stack(lock_file, args.port)
+            try:
+                fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                raise RuntimeError("Another WikiPulse launcher started at the same time; retry.")
+            check_port_available(args.port)
             LOG_DIRECTORY.mkdir(parents=True, exist_ok=True)
             was_running = run_command([
                 "docker", "compose", "ps", "--status", "running", "-q", "kafka"
             ])
-            owns_kafka = not bool(was_running)
+            if was_running:
+                print("Stopping the existing WikiPulse Kafka broker before restart…", flush=True)
+                run_command(["docker", "compose", "stop", "kafka"], timeout=45)
+            owns_kafka = True
             print("Starting Kafka and waiting for broker health…", flush=True)
             run_command(
                 ["docker", "compose", "up", "-d", "--wait", "--wait-timeout", "180", "kafka"],
@@ -312,12 +544,13 @@ def main() -> int:
             )
             # Topic auto-creation is disabled in Compose. The command is safe on
             # repeat starts and retains any existing topic and its messages.
-            run_command([
-                "docker", "compose", "exec", "-T", "kafka",
-                "/opt/kafka/bin/kafka-topics.sh", "--bootstrap-server", "localhost:9092",
-                "--create", "--if-not-exists", "--topic", KAFKA_TOPIC,
-                "--partitions", "3", "--replication-factor", "1",
-            ])
+            for topic in dict.fromkeys((KAFKA_TOPIC, KAFKA_ALERT_TOPIC)):
+                run_command([
+                    "docker", "compose", "exec", "-T", "kafka",
+                    "/opt/kafka/bin/kafka-topics.sh", "--bootstrap-server", "localhost:9092",
+                    "--create", "--if-not-exists", "--topic", topic,
+                    "--partitions", "3", "--replication-factor", "1",
+                ])
 
             control_token = secrets.token_urlsafe(32)
             processes.start(
@@ -360,8 +593,8 @@ def main() -> int:
             print(f"Startup/runtime error: {error}", file=sys.stderr)
             exit_code = 1
         finally:
-            write_supervisor_state(processes, "stopped")
             processes.stop()
+            write_supervisor_state(processes, "stopped")
             if owns_kafka:
                 try:
                     run_command(["docker", "compose", "stop", "kafka"], timeout=45)

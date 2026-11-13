@@ -31,10 +31,10 @@ PYTHONPATH=Repo .venv/bin/python3 -m unittest discover -s Repo/tests -v
 
 ### C. Run the Live Streaming Stack (Docker Kafka + EventStreams Collector + Spark Streaming)
 
-Start your Docker-compatible container engine, ensure `WIKIMEDIA_USER_AGENT` is set in `.env`, then run from `Repo/`:
+See [Local Run Prerequisites](docs/local-prerequisites.md) for the required tools and `.env` setup. Start your Docker-compatible container engine, then run from the repository root:
 
 ```bash
-cd Repo && ./run-local.sh --port 8080
+./run-local.sh --port 8080
 ```
 
 This starts Kafka, creates the topics (`wiki.raw.edits` and `wiki.shift.candidates`), and supervises the live collector, Spark Bronze ingestion, watermarked 5-minute and 1-hour window aggregators, streaming detectors, and the Dash + Plotly frontend at `http://127.0.0.1:8080`.

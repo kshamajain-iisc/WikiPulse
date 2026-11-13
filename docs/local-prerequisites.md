@@ -1,0 +1,11 @@
+# Local Run Prerequisites
+- Use macOS or Linux with Bash.
+- Install Python 3.10–3.12; Python 3.12 is recommended.
+- Install Java 17 and make `java` available on `PATH`.
+- Install Docker with the `docker compose` plugin.
+- Start the Docker-compatible engine before launching WikiPulse.
+- Copy `.env.example` to `.env` and replace the sample contact in `WIKIMEDIA_USER_AGENT` with a real contact.
+- Allow internet access on first run for Python packages and Spark's Kafka connector, and while receiving Wikipedia's live stream.
+- Keep several GB of memory available for Kafka and the four Spark jobs.
+- Keep `localhost:8080` available for the dashboard.
+- Run `./run-local.sh`; it creates `.venv`, installs pinned Python packages, and starts the stack.

@@ -112,14 +112,17 @@ only when required. Python 3.10–3.12 is supported by the bootstrap; 3.12 is re
 First-run dependency and Kafka connector downloads need network access. The
 supervisor in `src/run_local.py` then:
 
-1. Checks Java, Compose, engine availability, local broker configuration, and the
-   dashboard port. A file lock prevents two launchers from sharing checkpoints.
-2. Starts the Compose Kafka service and waits for its healthcheck.
-3. Creates the configured Kafka topic if it is absent (three partitions, one replica).
-4. Starts the dashboard server, then the existing live collector and Spark raw job.
-5. Waits for the raw query startup marker and a committed raw batch before
-   starting both window jobs. Each window query must signal startup readiness.
-6. Monitors all processes; on an unexpected exit it reports the service log and
+1. Checks Java, Compose, engine availability, and local broker configuration.
+   On a normal start, it stops a previous WikiPulse launcher and dashboard on the
+   requested port before taking the launcher lock. A port owned by another app is
+   left alone and reported as an error. `--check` only checks prerequisites.
+2. Stops and restarts the Compose Kafka service, waits for its healthcheck, and
+   creates both configured Kafka topics if absent (three partitions, one replica).
+3. Starts the dashboard and collector, then waits for the collector to connect to
+   Wikimedia EventStreams before starting Spark ingestion.
+4. Waits for the raw query startup marker and a committed raw batch before
+   starting both window jobs. Each window and alert query must signal startup readiness.
+5. Monitors all processes; on an unexpected exit it reports the service log and
    stops the remaining owned services.
 
 Open [the dashboard](http://127.0.0.1:8080) and choose five-minute or hourly activity
@@ -129,9 +132,9 @@ required. There are four Spark JVMs, so allow several GB of free memory in addit
 to the container engine. The startup console reports readiness; per-service logs
 are appended under `logs/local/`.
 
-Press Ctrl+C to stop the collector, Spark drivers/JVMs, and web server. Kafka is
-stopped only if this launcher started it; a previously running broker is retained.
-Kafka volumes, raw files, and Spark checkpoints are never deleted. Do not run
+Press Ctrl+C to stop the collector, Spark drivers/JVMs, web server, and the
+restarted Kafka service. Kafka volumes, raw files, and Spark checkpoints are
+never deleted. Do not run
 individual writers from the next section alongside the supervisor's writers.
 Historical collection/preparation is a separate, bounded setup step using the
 commands above; the supervisor reads existing baselines and also works without them.
