@@ -26,7 +26,10 @@ STREAM_URL = os.getenv(
     "WIKIMEDIA_STREAM_URL",
     "https://stream.wikimedia.org/v2/stream/recentchange",
 )
-USER_AGENT = os.getenv("WIKIMEDIA_USER_AGENT", "")
+USER_AGENT = (
+    os.getenv("WIKIMEDIA_USER_AGENT")
+    or os.getenv("WIKIPULSE_USER_AGENT", "WikiPulse/1.0 (Senthil Raj K; mailto:senthilrajk@iisc.ac.in)")
+)
 STATS_INTERVAL = int(
     os.getenv("STATS_INTERVAL_SECONDS", "30")
 )

@@ -243,7 +243,7 @@ def main() -> int:
             curated=args.curated,
         )
         service = DashboardDataService(DashboardQueries(spark, paths))
-        app = create_app(service)
+        app = create_app(service, default_view="finalized")
         print(f"\nLaunching WikiPulse Dashboards on http://127.0.0.1:{args.port} ...", flush=True)
         app.run(host="127.0.0.1", port=args.port, debug=False, use_reloader=False)
         return 0

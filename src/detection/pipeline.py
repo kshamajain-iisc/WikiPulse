@@ -14,18 +14,59 @@ from src.detection.storage import commit_batch, publish_alerts
 from src.page_features import HISTORY_SCHEMA, historical_edits, page_windows
 
 
-def load_baselines(spark, path: Path):
-    """An absent initial baseline is supported; corrupt existing data fails loudly."""
-    if not path.exists():
-        return None
-    return spark.read.parquet(str(path))
+def _adapt_curated_page_baselines(df, duration: str):
+    """Adapt `curated/page_baselines` (HISTORICAL_BASELINE_SCHEMA) to the per-window
+    schema expected by `compare_history()` and `score_windows()`."""
+    if "baseline_title" in df.columns and "avg_edits_human" in df.columns:
+        return df
+    window_duration = "5 minutes" if duration in ("5m", "5 minutes") else "1 hour"
+    hourly_div = 12.0 if window_duration == "5 minutes" else 1.0
+    daily_div = 288.0 if window_duration == "5 minutes" else 24.0
+    editor_div = 18.0 if window_duration == "5 minutes" else 6.0
+    return (
+        df.withColumn("baseline_title", F.col("title"))
+        .withColumn("window_duration", F.lit(window_duration))
+        .withColumn("avg_edits_human", F.col("avg_hourly_edits") / F.lit(hourly_div))
+        .withColumn("std_edits_human", F.col("std_hourly_edits") / F.lit(hourly_div ** 0.5))
+        .withColumn("avg_distinct_human_editors", F.col("avg_distinct_editors_daily") / F.lit(editor_div))
+        .withColumn("std_distinct_human_editors", F.greatest(F.lit(1.0), F.col("avg_distinct_editors_daily") / F.lit(editor_div)))
+        .withColumn("avg_gross_bytes", F.col("avg_gross_bytes_daily") / F.lit(daily_div))
+        .withColumn("std_gross_bytes", F.col("std_gross_bytes_daily") / F.lit(daily_div ** 0.5))
+        .withColumn("byte_baseline_complete", F.lit(True))
+        .withColumn("baseline_start", F.col("baseline_start_date"))
+        .withColumn("baseline_end_exclusive", F.date_add(F.col("baseline_end_date"), 1))
+        .withColumn(
+            "baseline_windows",
+            (F.col("days_observed") * F.lit(int(daily_div))).cast("int"),
+        )
+    )
+
+
+def load_baselines(spark, path: Path, duration: str = "5m"):
+    """An absent initial baseline is supported; corrupt existing data fails loudly.
+    Falls back to `curated/page_baselines` when `baselines_{duration}` is absent
+    and the caller did not pass a custom missing path in an isolated temp directory."""
+    if path.exists():
+        df = spark.read.option("pathGlobFilter", "*.parquet").parquet(str(path))
+        return _adapt_curated_page_baselines(df, duration)
+    if path.name.startswith("baselines_"):
+        try:
+            from src.config.settings import CURATED_TABLES
+            fallback = CURATED_TABLES.get("page_baselines")
+            if fallback and fallback.exists() and next(fallback.rglob("*.parquet"), None) is not None:
+                df = spark.read.option("pathGlobFilter", "*.parquet").parquet(str(fallback))
+                return _adapt_curated_page_baselines(df, duration)
+        except Exception:
+            pass
+    return None
 
 
 def run_batch(spark, windows: Path, baselines: Path, output: Path, config=DetectorConfig()):
     """Write a new experiment directory; refuse to overwrite prior results."""
     if output.exists():
         raise ValueError(f"Choose a new experiment output: {output}")
-    scored = score_windows(spark.read.parquet(str(windows)), load_baselines(spark, baselines), config)
+    duration = "1h" if "1h" in windows.name else "5m"
+    scored = score_windows(spark.read.parquet(str(windows)), load_baselines(spark, baselines, duration), config)
     scored.persist(StorageLevel.MEMORY_AND_DISK)
     try:
         scored.write.parquet(str(output / "scored_windows"))
@@ -37,7 +78,7 @@ def run_batch(spark, windows: Path, baselines: Path, output: Path, config=Detect
 def pin_contract(checkpoint: Path, source: Path, baselines: Path, output: Path, duration: str, config, topic):
     """Refuse changed detector inputs with a checkpoint that has committed offsets."""
     files = sorted((str(p.relative_to(baselines)), p.stat().st_size, p.stat().st_mtime_ns)
-                   for p in baselines.rglob("*.parquet"))
+                   for p in baselines.rglob("*.parquet")) if baselines.exists() else []
     contract = {
         "version": SCORE_VERSION, "config": asdict(config), "source": str(source.resolve()),
         "baseline": str(baselines.resolve()), "baseline_signature": hashlib.sha256(json.dumps(files).encode()).hexdigest(),
@@ -58,7 +99,7 @@ def start_stream(spark, source: Path, baselines: Path, output: Path, checkpoint:
                  duration: str, config=DetectorConfig(), topic=None, available_now=False):
     """Score only append-only, watermark-finalized windows, never live previews."""
     pin_contract(checkpoint, source, baselines, output, duration, config, topic)
-    baseline = load_baselines(spark, baselines)
+    baseline = load_baselines(spark, baselines, duration)
     # Derive the explicit sink schema from the shared feature transform. This
     # allows startup before the first watermark has finalized a window.
     schema = page_windows(historical_edits(spark.createDataFrame([], HISTORY_SCHEMA)),

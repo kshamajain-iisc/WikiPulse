@@ -86,6 +86,33 @@ class LocalLauncherTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "bronze exited with code 7"):
                 supervisor.check_running()
 
+    def test_starts_without_docker_using_file_broker_spool(self):
+        from src.kafka_common import FileStreamProducer
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            with (
+                patch.object(run_local, "ROOT", root),
+                patch.object(run_local, "LOG_DIRECTORY", root / "logs"),
+                patch.object(run_local, "validate_prerequisites", return_value=False),
+                patch.object(run_local, "LocalProcesses") as supervisor_class,
+                patch.object(run_local, "run_command") as command,
+                patch("sys.argv", ["run_local"]),
+            ):
+                supervisor = supervisor_class.return_value
+                supervisor.check_running.side_effect = KeyboardInterrupt
+                result = run_local.main()
+                self.assertEqual(result, 0)
+                self.assertEqual(command.call_args_list, [])
+                spool = root / "data/raw/local_broker_spool"
+                self.assertTrue((spool / "seed_0.json").is_file())
+                delivered = []
+                producer = FileStreamProducer(spool_dir=spool)
+                producer.produce("wiki.raw.edits", key=b"enwiki:2", value=b"{}", on_delivery=lambda err, msg: delivered.append(err))
+                producer.flush()
+                self.assertEqual(delivered, [None])
+                self.assertEqual(len(list(spool.glob("batch_*.json"))), 1)
+
 
 if __name__ == "__main__":
     unittest.main()

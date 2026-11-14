@@ -14,61 +14,20 @@ This document tracks the remaining UI polish, streaming-to-curated bridge, and d
 
 ---
 
-## 2. Open Items for Next 2 Days Fine-Tuning
+## 2. Completed Fine-Tuning Items
 
-### Item A (Medium Priority): Rename `REJECTED RECORDS` Card on `/system` Dashboard in Offline Mode
-- **Files:**
-  - [Repo/dashboards/data_service.py](file:///Users/senthilrajk/Downloads/002_IISc_DSBA/Data%20Engineering%20at%20Scale/Project-WikiPulse/Repo/dashboards/data_service.py#L137-L147)
-  - [Repo/dashboards/pages/system.py](file:///Users/senthilrajk/Downloads/002_IISc_DSBA/Data%20Engineering%20at%20Scale/Project-WikiPulse/Repo/dashboards/pages/system.py#L31-L34)
-- **Current Behavior:**
-  - When running in offline/backup demo mode (`./run-demo.sh`), `data_service.py` maps `quality["invalid_records"]` to `total_raw_events - curated_deduplicated_events` (`7,251,442` filtered `categorize` events).
-  - `system.py` displays this count under the card **`REJECTED RECORDS` ("Includes malformed test messages")** and labels **`RAW RECORDS`** as `"Current / prior UTC ingestion day"`.
-- **Planned Fine-Tuning:**
-  - Update the card subtitle/label when loaded from `ingestion_summary.json` so filtered `categorize` noise (`41.6%` of raw feed) is clearly distinguished from malformed records (`0` malformed, `100%` acceptance of valid `edit`/`new`/`log` events).
+- [x] **Item A (Medium Priority): Clarify `ACCEPTED EDITS` / `FILTERED EVENTS` Cards on `/system` Dashboard in Offline Mode**
+  - Updated `Repo/dashboards/data_service.py` and `Repo/dashboards/pages/system.py` so `ingestion_summary.json` displays `100% valid edit/new/log accepted (58.42% of raw)` and `Filtered categorize noise (0 malformed records)` across the 55-day curated dataset.
+- [x] **Item B (Medium Priority): Surface Pageview Baselines & Update Pageview Banner on `/historical` Dashboard**
+  - Added `("Mean daily views", "avg_daily_pageviews")`, `("Last pageview date", "last_pageview_date")`, and `("Views missing", "pageview_missing_flag")` to `baseline_columns` in `Repo/dashboards/pages/historical.py` and updated the pageview confirmation notice to reflect the connected `Repo/data/analytics/` series.
+- [x] **Item C (Medium Priority): Align Component Weight Headers on `/investigation` Dashboard**
+  - Updated `Repo/dashboards/pages/investigation.py` to label `("Editors / 25", "editor_points")` and exposed `("Pageviews / 10", "pageview_points")` in `Repo/src/dashboard_queries.py` and `investigation.py` so all 5 additive components (`35 + 25 + 20 + 10 + 10 = 100`) are displayed.
+- [x] **Item D (Low–Medium Priority): Unify Baseline Lookup in Live Streaming Detector (`src/detection/`)**
+  - Updated `Repo/src/detection/__main__.py` and `Repo/src/detection/pipeline.py` so `load_baselines()` falls back to `curated/page_baselines` and adapts hourly/daily baseline moments to `5m`/`1h` windows when `data/week2/historical/baselines_{duration}` is absent.
+- [x] **Item E (Low Priority): Update Documentation Summary Tables from 46-Day Numbers to Final 55-Day Numbers**
+  - Updated `Repo/README.md`, `Repo/DEMO_COMMANDS.md`, `Repo/docs/final_project_report.md`, and `Repo/docs/presentation_and_demo_guide.md` to reflect the synchronized 55-day curated lake (`17,441,561` raw $\rightarrow$ `10,190,119` curated events, `2026-09-15 .. 2026-11-08`).
+- [x] **Item F: Fix `run-demo.sh` & `run-local.sh` Virtualenv Resolution, Supervisor State Paths & Curated Window Horizon**
+  - Updated `Repo/run-demo.sh` and `Repo/run-local.sh` to automatically resolve and verify a working `.venv` (including the parent project `.venv` when `Repo/.venv` is incomplete).
+  - Updated `Repo/src/run_local.py` so `write_supervisor_state()` dynamically resolves `ROOT` and creates `data/run` before writing, created `Repo/.env` with a valid `WIKIMEDIA_USER_AGENT` and dynamic `SPARK_KAFKA_PACKAGE` matching the installed PySpark version, and anchored curated finalized windows in `Repo/src/dashboard_queries.py` and `Repo/src/demo/backup_demo.py` to the latest evaluation window timestamp.
 
----
-
-### Item B (Medium Priority): Surface Pageview Baselines & Update Pageview Banner on `/historical` Dashboard
-- **File:** [Repo/dashboards/pages/historical.py](file:///Users/senthilrajk/Downloads/002_IISc_DSBA/Data%20Engineering%20at%20Scale/Project-WikiPulse/Repo/dashboards/pages/historical.py#L21-L45)
-- **Current Behavior:**
-  - Line 44 displays a static notice: *"Pageviews are delayed supporting evidence. No view counts or correlations are shown until a normalized pageview source is connected."*
-  - Lines 22–24 (`baseline_columns`) show `title`, `activity_tier`, `avg_daily_edits`, `last_available_date`, and `has_missing_data`, omitting `avg_daily_pageviews`, `last_pageview_date`, and `pageview_missing_flag`.
-- **Planned Fine-Tuning:**
-  - Add `("Mean daily views", "avg_daily_pageviews")`, `("Last pageview date", "last_pageview_date")`, and `("Views missing", "pageview_missing_flag")` to `baseline_columns` in `historical.py`, and update the bottom notice to reflect the connected `Repo/data/analytics/` pageview series.
-
----
-
-### Item C (Medium Priority): Align Component Weight Headers on `/investigation` Dashboard
-- **Files:**
-  - [Repo/dashboards/pages/investigation.py](file:///Users/senthilrajk/Downloads/002_IISc_DSBA/Data%20Engineering%20at%20Scale/Project-WikiPulse/Repo/dashboards/pages/investigation.py#L19-L25)
-  - [Repo/src/dashboard_queries.py](file:///Users/senthilrajk/Downloads/002_IISc_DSBA/Data%20Engineering%20at%20Scale/Project-WikiPulse/Repo/src/dashboard_queries.py#L81-L85)
-- **Current Behavior:**
-  - Detector B in [Repo/src/anomaly/scoring_sparkml.py](file:///Users/senthilrajk/Downloads/002_IISc_DSBA/Data%20Engineering%20at%20Scale/Project-WikiPulse/Repo/src/anomaly/scoring_sparkml.py) uses component weights `35` (velocity) / `25` (editors) / `20` (byte churn) / `10` (reverts/consensus) / `10` (pageviews) = `100`.
-  - `investigation.py` labels the editor column `("Editors / 20", "editor_points")` instead of `Editors / 25`, and omits `pageview_points` (`Pageviews / 10`).
-- **Planned Fine-Tuning:**
-  - Update the header in `investigation.py` to `Editors / 25` and expose `pageview_points` (`Pageviews / 10`) in `dashboard_queries.py` and `investigation.py`.
-
----
-
-### Item D (Low–Medium Priority): Unify Baseline Lookup in Live Streaming Detector (`src/detection/`)
-- **Files:**
-  - [Repo/src/detection/__main__.py](file:///Users/senthilrajk/Downloads/002_IISc_DSBA/Data%20Engineering%20at%20Scale/Project-WikiPulse/Repo/src/detection/__main__.py)
-  - [Repo/src/detection/pipeline.py](file:///Users/senthilrajk/Downloads/002_IISc_DSBA/Data%20Engineering%20at%20Scale/Project-WikiPulse/Repo/src/detection/pipeline.py#L17-L22)
-- **Current Behavior:**
-  - When `./run-local.sh` starts `python -m src.detection stream`, it looks for `data/week2/historical/baselines_5m` (generated by `src/prepare_history.py`) rather than falling back to `curated/page_baselines` (generated by `src/historical/build_baselines.py`).
-- **Planned Fine-Tuning:**
-  - Allow `load_baselines()` in `src/detection/pipeline.py` to fall back to `curated/page_baselines` (scaling `avg_hourly_edits` and `std_hourly_edits` to `5m`/`1h`) when `data/week2/historical/baselines_{duration}` is absent.
-
----
-
-### Item E (Low Priority): Update Documentation Summary Tables from 46-Day Numbers to Final 55-Day Numbers
-- **Files:**
-  - [Repo/README.md](file:///Users/senthilrajk/Downloads/002_IISc_DSBA/Data%20Engineering%20at%20Scale/Project-WikiPulse/Repo/README.md)
-  - [Repo/DEMO_COMMANDS.md](file:///Users/senthilrajk/Downloads/002_IISc_DSBA/Data%20Engineering%20at%20Scale/Project-WikiPulse/Repo/DEMO_COMMANDS.md)
-  - [Repo/docs/final_project_report.md](file:///Users/senthilrajk/Downloads/002_IISc_DSBA/Data%20Engineering%20at%20Scale/Project-WikiPulse/Repo/docs/final_project_report.md)
-  - [Repo/docs/presentation_and_demo_guide.md](file:///Users/senthilrajk/Downloads/002_IISc_DSBA/Data%20Engineering%20at%20Scale/Project-WikiPulse/Repo/docs/presentation_and_demo_guide.md)
-- **Current Behavior:**
-  - Markdown summary tables still reference the earlier 46-day run (`14,398,713` raw $\rightarrow$ `8,428,021` curated rows, `2026-09-15 .. 2026-10-30`) while the curated Parquet lake now spans **55 days (`2026-09-15 .. 2026-11-08`, `17,441,561` raw $\rightarrow$ `10,190,119` curated)**.
-- **Planned Fine-Tuning:**
-  - Update the metric tables in `README.md`, `DEMO_COMMANDS.md`, `final_project_report.md`, and `presentation_and_demo_guide.md` to reflect the synchronized 55-day numbers.
 

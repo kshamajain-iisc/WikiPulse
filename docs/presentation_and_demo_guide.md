@@ -11,7 +11,7 @@
 ### Slide 1 — Title & Project Vision
 - **Title:** *WikiPulse: Real-Time Detection and Analysis of Wikipedia Knowledge Shifts*
 - **Core Thesis:** Wikipedia edits reflect breaking news, scientific discoveries, and public controversies within seconds, but raw signals are fragmented across high-velocity edit streams, historical baselines, topic graphs, and ML revert models.
-- **What We Built:** An end-to-end distributed data platform (Kafka + PySpark Structured Streaming & Batch + Spark ML + Dash/Plotly) validated on **46 days** of English Wikipedia history (**14.40M raw events $\rightarrow$ 8.43M curated edits**).
+- **What We Built:** An end-to-end distributed data platform (Kafka + PySpark Structured Streaming & Batch + Spark ML + Dash/Plotly) validated on **55 days** of English Wikipedia history (**17.44M raw events $\rightarrow$ 10.19M curated edits**).
 
 ### Slide 2 — Why Fixed Rules Fail (Motivation)
 - **The Problem with Naive Thresholds:** A static rule like *"$\ge 6$ edits in 5 minutes"* fails in two opposite directions:
@@ -46,13 +46,13 @@ flowchart LR
 
 ### Slide 4 — Shared Data Model (8 Canonical PySpark Schemas)
 - Enforced across both batch and streaming pipelines in [`Repo/src/models/schemas.py`](file:///Users/senthilrajk/Downloads/002_IISc_DSBA/Data%20Engineering%20at%20Scale/Project-WikiPulse/Repo/src/models/schemas.py):
-  1. `RAW_EDIT_SCHEMA` (`curated/rc_events`: `8,428,021` rows)
-  2. `HISTORICAL_BASELINE_SCHEMA` (`curated/page_baselines`: `1,801,530` pages)
-  3. `PAGE_WINDOW_SCHEMA` (`page_windows_5m`: `350,192` rows; `page_windows_1h`: `189,517` rows)
-  4. `ALERT_SCHEMA` (`curated/alerts`: `3,564` high-confidence alerts, deterministic SHA-256 `alert_id`)
-  5. `GRAPH_EDGE_SCHEMA` (`curated/graph_edges`: `607` directed edges, `32.1%` co-edited spillover)
+  1. `RAW_EDIT_SCHEMA` (`curated/rc_events`: `10,190,119` rows across 55 days)
+  2. `HISTORICAL_BASELINE_SCHEMA` (`curated/page_baselines`: `3,307,257` pages across 47 baseline days)
+  3. `PAGE_WINDOW_SCHEMA` (`page_windows_5m`: `113,754` rows; `page_windows_1h`: `60,714` rows across 8 evaluation days)
+  4. `ALERT_SCHEMA` (`curated/alerts`: `1,321` high-confidence alerts, deterministic SHA-256 `alert_id`)
+  5. `GRAPH_EDGE_SCHEMA` (`curated/graph_edges`: `606` directed edges, `35.3%` co-edited spillover)
   6. `REVISION_DIFF_SCHEMA` (`curated/revision_diffs`: `100` pairs, `100%` usable change data)
-  7. `MAP_POINT_SCHEMA` (`curated/map_points`: `159` articles, `75.6%` located, `0` editor IPs)
+  7. `MAP_POINT_SCHEMA` (`curated/map_points`: `158` articles, `76.9%` located, `0` editor IPs)
   8. `REVERT_RISK_SCHEMA` (`curated/revert_risk_eval`: `120` revisions, `100%` Lift Wing + fallback coverage)
 
 ### Slide 5 — Data Engineering Hygiene & Curated Lake (Milestone 4)
@@ -134,14 +134,14 @@ cd Repo && ./run-local.sh --port 8080
    - Scroll to the **Revision Diff Inspector** showing actual text additions/removals from MediaWiki `action=compare` and the **Lift Wing Revert Risk** table comparing `ml_revert_risk`, `composite_risk`, and actual 48-hour revert outcomes (`is_reverted_actual`).
 
 3. **Minute 3 — Screen 3: Historical Baselines, Churn & Bot Ratio (`/historical`)**
-   - Show the 46-day **Human vs. Bot Edit Timeline**, **Gross Churn vs. Net Byte Growth**, and **Top Articles by Baseline Surge vs. Raw Edits**.
-   - Point out the **Data Freshness & Missing-Data Notice** displaying `last_available_date` (`2026-10-30`).
+   - Show the 55-day **Human vs. Bot Edit Timeline**, **Gross Churn vs. Net Byte Growth**, and **Top Articles by Baseline Surge vs. Raw Edits**.
+   - Point out the **Data Freshness & Missing-Data Notice** displaying `last_available_date` (`2026-10-31`) and connected pageview baselines (`avg_daily_pageviews`, `last_pageview_date`).
 
 4. **Minute 4 — Screen 4: Topic Relationships & Subject Map (`/relationships`)**
-   - Show the **Related-Page Link/Backlink Spillover Graph** (`607` edges, `195` co-edited in window).
-   - Show the **Global Article-Subject Map** (`121` located alerts via Wikipedia & Wikidata `P625`/`P276`/`P17`, with `0` editor IPs and `39` unlocated conceptual alerts preserved).
+   - Show the **Related-Page Link/Backlink Spillover Graph** (`606` edges, `214` co-edited in window).
+   - Show the **Global Article-Subject Map** (`123` located alerts via Wikipedia & Wikidata `P625`/`P276`/`P17`, with `0` editor IPs and `37` unlocated conceptual alerts preserved).
 
 5. **Minute 5 — Screen 5: Engineering, Scaling & Recovery Health (`/system`)**
-   - Show the **Ingestion Quality Cards** (`14,398,713` raw $\rightarrow$ `8,428,021` accepted, `100%` valid retention).
+   - Show the **Ingestion Quality Cards** (`17,441,561` raw $\rightarrow$ `10,190,119` accepted, `100%` valid non-categorize retention).
    - Point to the **Strong Scaling & Parallel Speedup Chart**, **Streaming Load vs. Processing Capacity Chart**, **Controlled Stop/Restart Backlog Recovery Table** (`0` remaining backlog, `0` duplicate alerts), and the **Stored Parquet Footprint & Sub-Second Query Benchmarks**.
 

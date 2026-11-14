@@ -10,7 +10,7 @@ WikiPulse is an end-to-end distributed data platform that detects anomalous Wiki
 ## 1. Quickstart: Turnkey Demo, Live Stack & Full Pipeline Commands
 
 ### A. 1-Command Reproducible Backup Demo (Recommended for Presentation)
-Runs directly off the verified **46-day Curated Parquet Lake** (`historical/data/curated/`, **8,428,021** deduplicated events across **11 Parquet tables**) with zero external network or Docker dependencies:
+Runs directly off the verified **55-day Curated Parquet Lake** (`historical/data/curated/`, **10,190,119** deduplicated events across **11 Parquet tables**) with zero external network or Docker dependencies:
 
 ```bash
 # 1. Run pre-flight readiness verification + 4 real Wikipedia case-study walkthrough:
@@ -47,16 +47,16 @@ This starts Kafka, creates the topics (`wiki.raw.edits` and `wiki.shift.candidat
 # Milestone 1: Verify APIs, 8 Shared PySpark Schemas & Normalization
 .venv/bin/python3 Repo/src/verify_milestone1.py
 
-# Milestone 4.1: Ingest & Curate 46-Day Partitioned Parquet Lake (14.40M raw -> 8.43M curated)
+# Milestone 4.1: Ingest & Curate 55-Day Partitioned Parquet Lake (17.44M raw -> 10.19M curated)
 .venv/bin/python3 Repo/src/historical/ingest_curate.py
 
-# Milestone 4.2: Build Per-Page Historical Baselines (1.80M pages) & Analytics Pageview Join
+# Milestone 4.2: Build Per-Page Historical Baselines (3.31M pages) & Analytics Pageview Join
 .venv/bin/python3 Repo/src/historical/build_baselines.py
 
 # Milestone 4.3: Build Churn/Bot Summaries, Daily Rankings & Run Manual/RDD/Parquet Benchmarks
 .venv/bin/python3 Repo/src/historical/rankings_benchmark.py
 
-# Milestone 5.1: Build 5-Minute (350k) & 1-Hour (190k) Page Window Features
+# Milestone 5.1: Build 5-Minute (114k) & 1-Hour (61k) Evaluation Page Window Features
 .venv/bin/python3 Repo/src/anomaly/window_features.py
 
 # Milestone 5.2: Run Detectors A (Fixed), B (Historical Score) & C (Spark ML) -> curated/alerts
@@ -90,15 +90,15 @@ This starts Kafka, creates the topics (`wiki.raw.edits` and `wiki.shift.candidat
 
 | Milestone / Dimension | Measured Result |
 | :--- | :--- |
-| **Data Ingestion & Hygiene (M4.1)** | **14,398,713** raw events (`2026-09-15 .. 2026-10-30`, 46 days) $\rightarrow$ **8,428,021** valid `edit`/`new`/`log` events (**100% acceptance rate**, $\ge 99\%$ target). Multi-member gzip recovery salvaged all `269,017` rows of `2026-10-27`. |
+| **Data Ingestion & Hygiene (M4.1)** | **17,441,561** raw events (`2026-09-15 .. 2026-11-08`, 55 days) $\rightarrow$ **10,190,119** valid `edit`/`new`/`log` events (**100% acceptance rate**, $\ge 99\%$ target; `7,251,442` `categorize` noise filtered). Multi-member gzip recovery salvaged all `269,017` rows of `2026-10-27`. |
 | **Manual Sample Audit (M4.3)** | **100% exact match** between pure-Python stdlib and Spark DataFrame on 2,000 events (`gross_churn = 2,024,277 B`, `rewriting_bytes = 1,179,254 B`). |
-| **Multi-Detector Accuracy (M5.2–M5.3)** | **100% synthetic recall (`5/5`)** with $\ge 2$ human-readable reasons on 100% of alerts (`avg 4.03`). False-alert rate reduced from **68.81%** (Detector A Fixed Rule) to **10.72%** (Detector B Historical Score) and **0.29%** (Detector C Spark ML). |
-| **Topic Graph & Revision Diffs (M6.1)** | **607** directed link/backlink edges (**195 co-edited spillover edges, 32.13%**); **100/100 (100.0%)** revision diffs return usable change data ($\ge 90\%$ target). |
-| **Subject Geospatial Map (M6.2)** | **121 / 160 (75.62%)** alerts resolved via Wikipedia coordinates & Wikidata (`P625`, `P276`, `P17`) with source/quality tags; **39 (24.38%)** preserved as `unlocated`; **0 editor IPs used**. |
-| **Lift Wing Revert Risk (M6.3)** | **74.42%** routine edits pre-filtered; **100.0%** valid score coverage (`92.5%` live Lift Wing ML + `7.5%` heuristic fallback, $\ge 95\%$ target). Calibrating $\tau = 0.65$ improves `composite_risk` F1 from `68.57%` to **`76.92%`**; median 48h revert MTTR = **`66.5s`**. |
-| **Scaling & Shuffle Benchmarks (M7.1)** | Strong scaling reaches **`1.69x` speedup** on `local[4]`; shuffle partition sweep proves **`16` partitions (`10.00s`)** is globally optimal; full 46-day lake (`8.43M` rows) runs in **`38.09s` (`221,295 rows/s`)**; DataFrame outperforms RDD by **`2.03x–2.86x`**. |
+| **Multi-Detector Accuracy (M5.2–M5.3)** | **100% synthetic recall (`5/5`)** with $\ge 2$ human-readable reasons on 100% of alerts (`1,321/1,321`). False-alert rate reduced from **65.04%** (Detector A Fixed Rule) to **9.14%** (`1.55%` on reviewed 200-window sample) for Detector B Historical Score and **0.00%** for Detector C Spark ML. |
+| **Topic Graph & Revision Diffs (M6.1)** | **606** directed link/backlink edges (**214 co-edited spillover edges, 35.31%**); **100/100 (100.0%)** revision diffs return usable change data (`98%` live Compare API, $\ge 90\%$ target). |
+| **Subject Geospatial Map (M6.2)** | **123 / 160 (76.88%)** alerts resolved via Wikipedia coordinates & Wikidata (`P625`, `P276`, `P17`) with source/quality tags; **37 (23.12%)** preserved as `unlocated`; **0 editor IPs used**. |
+| **Lift Wing Revert Risk (M6.3)** | **75.06%** routine edits pre-filtered; **100.0%** valid score coverage (`89.17%` live Lift Wing ML + `10.83%` heuristic fallback, $\ge 95\%$ target). Calibrating thresholds against 48h reverts achieves **`75.79%` peak ML F1** (`70.89%` composite F1 at $\tau = 0.50$); median 48h revert MTTR = **`54.0s`**. |
+| **Scaling & Shuffle Benchmarks (M7.1)** | Strong scaling reaches **`1.69x` speedup** on `local[4]`; shuffle partition sweep proves **`16` partitions (`10.00s`)** is globally optimal; 8.43M-row benchmark runs in **`38.09s` (`221,295 rows/s`)**; DataFrame outperforms RDD by **`2.54x–2.86x`**. |
 | **Streaming Load & Failure Recovery (M7.2)** | Processing capacity (`2,266–8,989 rows/s`) exceeds `1x..100x` input rates; closed 5m windows finalize in **`0.35s–9.45s` (`< 60s` target)**; controlled stop/restart drains **`123,537` backlog events $\rightarrow$ `0` in `13.7s–18.7s`** with **`0` duplicate alerts** (`39/39` reference parity). |
-| **Dashboard Query Latency (M6.4 & M8.1)** | All 4 Proposal Dashboard Views execute in **`0.006s – 0.889s`** over stored Parquet (`< 2.0s` target, ~14.5x faster than raw JSONL.gz). |
+| **Dashboard Query Latency (M6.4 & M8.1)** | All 4 Proposal Dashboard Views execute in **`0.007s – 1.342s`** over stored Parquet (`< 2.0s` target, ~14.5x faster than raw JSONL.gz). |
 
 ---
 

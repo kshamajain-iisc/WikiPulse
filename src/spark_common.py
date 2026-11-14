@@ -27,9 +27,20 @@ KAFKA_TOPIC = os.getenv(
     "KAFKA_TOPIC", "wiki.raw.edits"
 )
 SPARK_MASTER = os.getenv("SPARK_MASTER", "local[2]")
+def _default_kafka_package() -> str:
+    try:
+        import pyspark
+        ver = pyspark.__version__
+        major = int(ver.split(".")[0])
+        scala_ver = "2.13" if major >= 4 else "2.12"
+        return f"org.apache.spark:spark-sql-kafka-0-10_{scala_ver}:{ver}"
+    except Exception:
+        return "org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.6"
+
+
 KAFKA_PACKAGE = os.getenv(
     "SPARK_KAFKA_PACKAGE",
-    "org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.6",
+    _default_kafka_package(),
 )
 
 RAW_PATH = str(
@@ -65,6 +76,8 @@ def create_spark(app_name, with_kafka=True):
         builder
         .appName(app_name)
         .master(SPARK_MASTER)
+        .config("spark.driver.host", "127.0.0.1")
+        .config("spark.driver.bindAddress", "127.0.0.1")
         .config("spark.sql.shuffle.partitions", "3")
         .config("spark.sql.session.timeZone", "UTC")
         .config(

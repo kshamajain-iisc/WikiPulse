@@ -6,7 +6,7 @@ from pathlib import Path
 
 from src.detection.pipeline import run_batch, start_stream
 from src.detection.scoring import DetectorConfig
-from src.kafka_common import KAFKA_ALERT_TOPIC, ensure_topic
+from src.kafka_common import KAFKA_ALERT_TOPIC, ensure_topic, is_file_broker_mode
 from src.spark_common import ROOT, create_spark
 
 
@@ -27,10 +27,16 @@ def main():
         config = DetectorConfig(threshold=args.threshold)
     except ValueError as error:
         parser.error(str(error))
-    baselines = args.baselines or ROOT / f"data/week2/historical/baselines_{args.duration}"
+    default_baselines = ROOT / f"data/week2/historical/baselines_{args.duration}"
+    if not default_baselines.exists():
+        from src.config.settings import CURATED_TABLES
+        curated_base = CURATED_TABLES.get("page_baselines")
+        if curated_base is not None and curated_base.exists():
+            default_baselines = curated_base
+    baselines = args.baselines or default_baselines
     windows = args.windows or ROOT / f"data/live_activity/windows_{args.duration}"
     checkpoint = args.checkpoint or ROOT / f"data/checkpoints/detection/{args.duration}"
-    topic = None if args.no_kafka else KAFKA_ALERT_TOPIC
+    topic = None if (args.no_kafka or is_file_broker_mode()) else KAFKA_ALERT_TOPIC
     if args.mode == "stream" and topic:
         ensure_topic(topic)
     spark = create_spark("WikiPulse-Detection-" + args.mode, with_kafka=False)

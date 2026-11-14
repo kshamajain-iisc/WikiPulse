@@ -15,14 +15,14 @@ from src.spark_common import ROOT, create_spark
 from src.local_supervisor import request_stream_restart, stream_health
 
 
-def create_app(service):
+def create_app(service, default_view="live"):
     """Build the UI without creating Spark; tests can inject a small fake service."""
     app = Dash(
         __name__, assets_folder=str(Path(__file__).parent / "assets"),
         suppress_callback_exceptions=True, title="WikiPulse · Knowledge intelligence",
         update_title="Refreshing observations…",
     )
-    app.layout = shell()
+    app.layout = shell(default_view=default_view)
     register_callbacks(app, service)
 
     @app.server.get("/healthz")

@@ -397,9 +397,9 @@ def main() -> int:
         )
         service = DashboardDataService(DashboardQueries(spark, paths), cache_seconds=120)
         for screen in ("live", "investigation", "historical", "relationships", "system"):
-            _ = service.load(screen, "5m", "finalized", None, EVALUATION_START_DATE, EVALUATION_END_DATE)
+            _ = service.load(screen, "5m", "finalized", None, None, None)
 
-        app = create_app(service)
+        app = create_app(service, default_view="finalized")
         print(f"\nLaunching Pre-Warmed WikiPulse Backup Demo on http://127.0.0.1:{args.port} ...", flush=True)
         app.run(host="127.0.0.1", port=args.port, debug=False, use_reloader=False)
         return 0

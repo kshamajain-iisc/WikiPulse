@@ -10,8 +10,10 @@ import os
 from pathlib import Path
 
 from pyspark.sql import DataFrame, SparkSession
-from pyspark.sql.types import StructType
+from pyspark.sql import functions as F
+from pyspark.sql.types import IntegerType, LongType, StringType, StructField, StructType
 
+from src.kafka_common import is_file_broker_mode, seed_local_broker_spool
 from src.page_features import live_edits, page_windows
 from src.spark_common import (
     CHECKPOINT_PATH,
@@ -23,9 +25,28 @@ from src.spark_common import (
     parse_kafka_events,
 )
 
+FILE_BROKER_SCHEMA = StructType([
+    StructField("key", StringType()),
+    StructField("value", StringType()),
+    StructField("topic", StringType()),
+    StructField("partition", IntegerType()),
+    StructField("offset", LongType()),
+    StructField("timestamp", StringType()),
+])
+
 
 def read_kafka_events(spark: SparkSession, starting_offsets: str) -> DataFrame:
     """Read bounded microbatches while failing explicitly if Kafka history is lost."""
+    if is_file_broker_mode():
+        spool_dir = seed_local_broker_spool()
+        kafka_events = (
+            spark.readStream.schema(FILE_BROKER_SCHEMA)
+            .option("maxFilesPerTrigger", 50)
+            .json(str(spool_dir))
+            .withColumn("timestamp", F.to_timestamp("timestamp"))
+        )
+        return parse_kafka_events(kafka_events)
+
     kafka_events = (
         spark.readStream.format("kafka")
         .option("kafka.bootstrap.servers", KAFKA_SERVERS)
@@ -79,7 +100,7 @@ def main() -> None:
 
     spark = create_spark(
         "WikiPulse-Streaming-" + args.stage,
-        with_kafka=args.stage == "bronze",
+        with_kafka=(args.stage == "bronze" and not is_file_broker_mode()),
     )
     query = None
     try:
