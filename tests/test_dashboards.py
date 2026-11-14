@@ -8,7 +8,19 @@ from plotly.utils import PlotlyJSONEncoder
 
 from dashboards.app import create_app
 from dashboards.callbacks import PAGES, render_dashboard
-from dashboards.charts import baseline_comparison, relationship_graph, subject_map
+from dashboards.charts import (
+    baseline_comparison,
+    churn_rankings,
+    detector_comparison,
+    geo_country_breakdown,
+    kmeans_clusters,
+    m4_engine_and_latency,
+    relationship_graph,
+    revert_risk_calibration,
+    rf_feature_importances,
+    subject_map,
+)
+from dashboards.components import table
 from dashboards.data_service import DashboardDataService
 
 
@@ -20,8 +32,12 @@ class DashboardPresentationTests(unittest.TestCase):
             response = client.post("/_dash-update-component", json={
                 "output": "refresh.disabled",
                 "outputs": {"id": "refresh", "property": "disabled"},
-                "inputs": [{"id": "pause", "property": "value", "value": paused},
-                           {"id": "refresh-busy", "property": "data", "value": busy}],
+                "inputs": [
+                    {"id": "pause", "property": "value", "value": paused},
+                    {"id": "refresh-busy", "property": "data", "value": busy},
+                    {"id": "view", "property": "value", "value": "live"},
+                    {"id": "location", "property": "pathname", "value": "/"},
+                ],
                 "state": [], "changedPropIds": ["refresh-busy.data"],
             })
             self.assertEqual(response.status_code, 200)
@@ -50,7 +66,7 @@ class DashboardPresentationTests(unittest.TestCase):
     def test_http_layout_health_and_callback(self):
         app = create_app(self.service)
         client = app.server.test_client()
-        for route in ("/", "/historical", "/relationships", "/system", "/_dash-layout", "/_dash-dependencies", "/assets/dashboard.css"):
+        for route in ("/", "/historical", "/relationships", "/system", "/milestone4", "/milestone5", "/milestone6", "/_dash-layout", "/_dash-dependencies", "/assets/dashboard.css"):
             response = client.get(route)
             self.assertEqual(response.status_code, 200, route)
             response.close()
@@ -60,7 +76,7 @@ class DashboardPresentationTests(unittest.TestCase):
         ranking_input = next(item for item in navigation_callback["inputs"] if item["id"] == "page-ranking")
         self.assertTrue(ranking_input["allow_optional"])
         output_key = next(key for key in app.callback_map if "page-body.children" in key)
-        values = ["/", "", 0, "5m", "live", None, None, None]
+        values = ["/", "", 0, "5m", "live", None, "1m", 0, 1]
         callback = app.callback_map[output_key]
         inputs = [dict(spec, value=value) for spec, value in zip(callback["inputs"], values)]
         response = client.post("/_dash-update-component", json={
@@ -126,8 +142,29 @@ class DashboardPresentationTests(unittest.TestCase):
     def test_figures_use_real_optional_data(self):
         edge = {"source_title": "A", "target_title": "B"}
         self.assertEqual(len(relationship_graph([edge]).data), 2)
+        co_edge = {"source_title": "A", "target_title": "C", "co_edited_in_window": True}
+        self.assertEqual(len(relationship_graph([edge, co_edge]).data), 3)
         self.assertEqual(len(subject_map([]).data), 0)
         self.assertEqual(len(baseline_comparison([]).data), 0)
+        band_fig = baseline_comparison([{
+            "window_start": "2026-10-31T10:00:00Z", "edits_human": 10,
+            "avg_edits_human": 2.0, "std_edits_human": 1.5,
+        }])
+        self.assertEqual(len(band_fig.data), 3)
+        self.assertEqual(len(churn_rankings([{"title": "A", "gross_bytes": 500, "rewriting_bytes": 200}]).data), 2)
+        self.assertEqual(len(detector_comparison({"detector_a_fixed_count": 3, "detector_b_historical_count": 5}).data), 1)
+        self.assertEqual(len(revert_risk_calibration([{"threshold": 0.8, "precision_pct": 85.7, "recall_pct": 67.9, "f1_pct": 75.8}]).data), 3)
+        self.assertEqual(len(m4_engine_and_latency({"query_latency_benchmark": {"stored_parquet_rankings_top20_sec": 0.22}}).data), 1)
+        self.assertEqual(len(rf_feature_importances({"f_distinct_editors": 0.35, "f_edits_human": 0.22}).data), 1)
+        self.assertEqual(len(kmeans_clusters({"1": 40554, "3": 528}, normal_cluster_id=1).data), 1)
+        self.assertEqual(len(geo_country_breakdown([{"country_or_region": "United States", "active_topics": 63}]).data), 1)
+
+    def test_table_formats_booleans_and_accessibility_attrs(self):
+        region = table([{"title": "Alpha", "flag": True, "count": 12}], [("Title", "title"), ("Flag", "flag"), ("Count", "count")], aria_label="Test table")
+        serialized = json.dumps(region, cls=PlotlyJSONEncoder)
+        self.assertIn('"Yes"', serialized)
+        self.assertIn('"12"', serialized)
+        self.assertIn('"Test table"', serialized)
 
     def test_cache_does_not_repeat_the_same_spark_query(self):
         queries = Mock()

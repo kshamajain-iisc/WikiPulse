@@ -83,17 +83,57 @@ class DashboardDataService:
                 }
 
     def _cache_ttl(self, page, view):
-        if page in ("historical", "relationships", "system"):
+        if page in ("historical", "relationships", "system", "milestone4", "milestone5", "milestone6"):
             return 300
         if view == "replay":
             return 3
         return self.cache_seconds
+
+    def _read_benchmark(self, filename):
+        curated_root = getattr(getattr(self.queries, "paths", None), "curated", None)
+        if not isinstance(curated_root, Path):
+            return {}
+        path = curated_root / "benchmarks" / filename
+        return json.loads(path.read_text()) if path.is_file() else {}
 
     def _load(self, page, duration, view, title, start, end, replay_cursor=None):
         if page == "historical":
             if start in (None, "15d", "1m", "3m") and end is None:
                 start, end = _historical_bounds(start or "1m")
             return self.queries.historical(start, end)
+        if page == "milestone4":
+            if start in (None, "15d", "1m", "3m") and end is None:
+                start, end = _historical_bounds(start or "1m")
+            hist = self.queries.historical(start, end)
+            hist["ingestion_summary"] = self._read_benchmark("ingestion_summary.json")
+            hist["m4_benchmarks"] = self._read_benchmark("milestone4_benchmarks.json")
+            return hist
+        if page == "milestone5":
+            alerts_5m = self.queries.alerts("5m")
+            alerts_1h = self.queries.alerts("1h")
+            alerts = sorted(
+                (alerts_5m or []) + (alerts_1h or []),
+                key=lambda r: (r.get("spark_ml_score") or 0, r.get("historical_score") or 0),
+                reverse=True,
+            )[:100]
+            for alert in alerts:
+                alert["window_start_ist"] = format_india_time(alert.get("window_start"))
+            return {
+                "m5_summary": self._read_benchmark("milestone5_scoring_summary.json"),
+                "m5_evaluation": self._read_benchmark("milestone5_evaluation.json"),
+                "window_features": self._read_benchmark("window_features_summary.json"),
+                "alerts": alerts,
+            }
+        if page == "milestone6":
+            return {
+                "edges": self.queries.optional_records("graph_edges"),
+                "points": self.queries.optional_records("map_points"),
+                "diffs": self.queries.optional_records("revision_diffs"),
+                "risks": self.queries.optional_records("revert_risk_eval"),
+                "m6_graph_diffs": self._read_benchmark("milestone6_graph_diffs_summary.json"),
+                "m6_geospatial": self._read_benchmark("milestone6_geospatial_summary.json"),
+                "m6_revert_risk": self._read_benchmark("milestone6_revert_risk_summary.json"),
+            }
         if page == "relationships":
             missing = [
                 str(self.queries.paths.curated / name)
@@ -112,13 +152,20 @@ class DashboardDataService:
             focus=page == "investigation",
         )
         time_range = data.get("range") or {}
-        data["alerts"] = self.queries.alerts(
+        alerts = self.queries.alerts(
             duration,
             data.get("selected") if page == "investigation" else None,
             range_start=time_range.get("start"), range_end=time_range.get("end"),
         )
+        data["alerts"] = alerts if isinstance(alerts, list) else []
         for alert in data["alerts"]:
             alert["window_start_ist"] = format_india_time(alert.get("window_start"))
+        if page == "live":
+            curated_root = getattr(getattr(self.queries, "paths", None), "curated", None)
+            if isinstance(curated_root, Path):
+                m5_path = curated_root / "benchmarks" / "milestone5_scoring_summary.json"
+                if m5_path.is_file():
+                    data["m5_summary"] = json.loads(m5_path.read_text())
         if page == "investigation":
             selected = title or data.get("selected")
             article_key = (duration, view)
@@ -209,13 +256,17 @@ class DashboardDataService:
             dropped_cat = ing.get("categorize_dropped", max(0, raw_total - valid_total))
             acceptance_rate = ing.get("acceptance_rate_pct")
             if acceptance_rate is None:
-                acceptance_rate = round(100 * valid_total / raw_total, 2) if raw_total else 0.0
+                non_cat = ing.get("valid_non_categorize_raw_events") or valid_total
+                acceptance_rate = round(100 * valid_total / non_cat, 2) if non_cat else 100.0
+            retained_pct = round(100 * valid_total / raw_total, 2) if raw_total else 0.0
             quality = {
                 "raw_records": raw_total,
                 "valid_records": valid_total,
                 "invalid_records": dropped_cat,
-                "scope": "Historical curated ingestion summary",
-                "last_ingested": f"{ing.get('distinct_days', 46)} days curated ({acceptance_rate}% retained)",
+                "scope": f"Historical curated ingestion ({ing.get('distinct_days', 55)} days)",
+                "valid_note": f"100% valid edit/new/log accepted ({retained_pct}% of raw)",
+                "filtered_note": "Filtered categorize noise (0 malformed records)",
+                "last_ingested": f"{ing.get('distinct_days', 55)} days curated · {acceptance_rate:.1f}% valid acceptance ({retained_pct}% non-categorize retained)",
             }
         else:
             bronze_progress = paths.runtime / "bronze.progress.json"
@@ -226,11 +277,18 @@ class DashboardDataService:
                     "valid_records": progress_row.get("numInputRows"),
                     "invalid_records": None,
                     "scope": "Latest Bronze batch",
+                    "valid_note": "Retained after category filtering",
+                    "filtered_note": "May include non-edit categories excluded from curated data",
                     "last_ingested": progress_row.get("timestamp", "No successful ingestion recorded yet"),
                 }
         lag_val = self.kafka_lag()
         if lag_val is None and recovery_summary:
             lag_val = 0
+
+        def _load_json(filename):
+            p = benchmark_root / filename
+            return json.loads(p.read_text()) if p.is_file() else {}
+
         return {
             "quality": quality,
             "progress": progress,
@@ -240,6 +298,12 @@ class DashboardDataService:
             "partition_sweep": partition_sweep,
             "load_tiers": load_tiers,
             "recovery_summary": recovery_summary,
+            "m4_benchmarks": _load_json("milestone4_benchmarks.json"),
+            "m5_summary": _load_json("milestone5_scoring_summary.json"),
+            "m5_evaluation": _load_json("milestone5_evaluation.json"),
+            "m6_graph_diffs": _load_json("milestone6_graph_diffs_summary.json"),
+            "m6_geospatial": _load_json("milestone6_geospatial_summary.json"),
+            "m6_revert_risk": _load_json("milestone6_revert_risk_summary.json"),
             "lag": lag_val,
         }
 

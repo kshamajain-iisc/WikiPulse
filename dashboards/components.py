@@ -71,7 +71,17 @@ def notice(title, description):
                      html.Div([html.Strong(title), html.P(description)])], className="notice")
 
 
-def table(rows, columns, article_links=False):
+def pill_row(items):
+    """Render compact badge pills; items are (label, value) tuples."""
+    if not items:
+        return None
+    return html.Div([
+        html.Span([html.Span(f"{label}: ", className="pill-label"), html.Strong(str(value))], className="pill")
+        for label, value in items
+    ], className="pill-row")
+
+
+def table(rows, columns, article_links=False, aria_label="Data table"):
     """Render bounded server results safely as text; no untrusted HTML."""
     if not rows:
         return notice("No records yet", "This section populates when its source table is available.")
@@ -80,7 +90,9 @@ def table(rows, columns, article_links=False):
         cells = []
         for label, key in columns:
             value = row.get(key)
-            if isinstance(value, list):
+            if isinstance(value, bool):
+                value = "Yes" if value else "No"
+            elif isinstance(value, list):
                 value = "; ".join(str(item) for item in value)
             elif isinstance(value, dict):
                 value = str(value)
@@ -94,6 +106,12 @@ def table(rows, columns, article_links=False):
                 value = dcc.Link(value, href="/investigation?title=" + quote(row["title"], safe=""))
             cells.append(html.Td(value))
         body.append(html.Tr(cells))
-    return html.Div(html.Table([
-        html.Thead(html.Tr([html.Th(label) for label, _ in columns])), html.Tbody(body)
-    ]), className="table-scroll")
+    return html.Div(
+        html.Table([
+            html.Thead(html.Tr([html.Th(label) for label, _ in columns])), html.Tbody(body)
+        ]),
+        className="table-scroll",
+        tabIndex=0,
+        role="region",
+        **{"aria-label": aria_label},
+    )

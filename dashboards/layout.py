@@ -8,6 +8,9 @@ ROUTES = [
     ("/historical", "03", "Historical intelligence"),
     ("/relationships", "04", "Relationships & map"),
     ("/system", "05", "Engineering & health"),
+    ("/milestone4", "06", "M4 · Baselines & churn"),
+    ("/milestone5", "07", "M5 · Anomaly & Spark ML"),
+    ("/milestone6", "08", "M6 · Context & risk"),
 ]
 
 
@@ -17,7 +20,7 @@ def navigation(pathname="/"):
             for path, number, label in ROUTES]
 
 
-def shell():
+def shell(default_view="live"):
     return html.Div([
         dcc.Location(id="location", refresh="callback-nav"),
         # Poll live views often enough to feel live; static routes disable it.
@@ -68,7 +71,7 @@ def shell():
                                  {"label": "1 hour", "value": "1h"},
                                  {"label": "6 hours", "value": "6h"}],
                     )], className="control window-control"),
-                    html.Div([html.Label("RESULTS"), dcc.Dropdown(id="view", value="live", clearable=False,
+                    html.Div([html.Label("RESULTS"), dcc.Dropdown(id="view", value=default_view, clearable=False,
                         options=[{"label": "Live preview", "value": "live"},
                                  {"label": "Finalized windows", "value": "finalized"},
                                  {"label": "Replay stored activity", "value": "replay"}])], className="control"),

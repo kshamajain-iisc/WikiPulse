@@ -146,9 +146,19 @@ def baseline_comparison(rows, time_range=None):
         return empty("No matching historical baseline for these windows")
     rows = sorted(rows, key=lambda row: row["window_start"])
     figure = go.Figure()
+    x_vals = [to_india_wall_time(r["window_start"]) for r in rows]
     for label, key in (("Observed human edits", "edits_human"), ("Historical mean", "avg_edits_human")):
-        figure.add_trace(go.Scatter(x=[to_india_wall_time(r["window_start"]) for r in rows], y=[r.get(key) for r in rows],
+        figure.add_trace(go.Scatter(x=x_vals, y=[r.get(key) for r in rows],
                                    name=label, mode="lines+markers"))
+    if any(r.get("std_edits_human") is not None and r.get("avg_edits_human") is not None for r in rows):
+        upper_band = [
+            round((r.get("avg_edits_human") or 0) + 2.0 * (r.get("std_edits_human") or 0), 2)
+            for r in rows
+        ]
+        figure.add_trace(go.Scatter(
+            x=x_vals, y=upper_band, name="Baseline μ + 2σ",
+            mode="lines", line=dict(color=AMBER, width=1.8, dash="dash"),
+        ))
     _india_axis(figure, time_range)
     labels = _india_hover_labels(rows, "window_start")
     for trace in figure.data:
@@ -164,16 +174,25 @@ def relationship_graph(edges):
     positions = {name: (math.cos(2 * math.pi * i / len(names)), math.sin(2 * math.pi * i / len(names)))
                  for i, name in enumerate(names)}
     x, y = [], []
+    co_x, co_y = [], []
     for edge in edges:
         source, target = positions.get(edge["source_title"]), positions.get(edge["target_title"])
         if source and target:
-            x.extend([source[0], target[0], None])
-            y.extend([source[1], target[1], None])
-    figure = go.Figure(go.Scatter(x=x, y=y, mode="lines", line=dict(color="#b7c4d9", width=1), hoverinfo="skip"))
+            if edge.get("co_edited_in_window"):
+                co_x.extend([source[0], target[0], None])
+                co_y.extend([source[1], target[1], None])
+            else:
+                x.extend([source[0], target[0], None])
+                y.extend([source[1], target[1], None])
+    figure = go.Figure(go.Scatter(x=x, y=y, mode="lines", line=dict(color="#b7c4d9", width=1),
+                                  name="Wiki link", hoverinfo="skip"))
+    if co_x:
+        figure.add_trace(go.Scatter(x=co_x, y=co_y, mode="lines", line=dict(color=AMBER, width=2.2),
+                                    name="Co-edited spillover", hoverinfo="skip"))
     figure.add_trace(go.Scatter(x=[positions[n][0] for n in names], y=[positions[n][1] for n in names],
                                text=names, mode="markers", marker=dict(size=14, color=GREEN),
-                               hovertemplate="%{text}<extra></extra>"))
-    figure.update_layout(showlegend=False, hovermode="closest")
+                               name="Article", hovertemplate="%{text}<extra></extra>"))
+    figure.update_layout(showlegend=bool(co_x), hovermode="closest")
     figure.update_xaxes(visible=False)
     figure.update_yaxes(visible=False, scaleanchor="x")
     return style(figure, 380)
@@ -242,3 +261,166 @@ def recovery_and_load(rows):
     ))
     figure.update_layout(barmode="group")
     return style(figure)
+
+
+def churn_rankings(rows):
+    """Top 10 articles by gross byte churn and rewriting volume (Milestone 4)."""
+    if not rows:
+        return empty("No churn rankings available yet")
+    top = sorted(rows, key=lambda r: r.get("gross_bytes") or 0, reverse=True)[:10][::-1]
+    labels = [r["title"] if len(r["title"]) <= 28 else r["title"][:27] + "…" for r in top]
+    y_idx = list(range(len(top)))
+    figure = go.Figure()
+    figure.add_trace(go.Bar(
+        x=[r.get("gross_bytes") or 0 for r in top], y=y_idx, orientation="h",
+        name="Gross churn (B)", marker_color=BLUE, customdata=[r["title"] for r in top],
+        hovertemplate="%{customdata}<br>Gross churn: %{x:,} B<extra></extra>",
+    ))
+    if any(r.get("rewriting_bytes") is not None for r in top):
+        figure.add_trace(go.Bar(
+            x=[r.get("rewriting_bytes") or 0 for r in top], y=y_idx, orientation="h",
+            name="Rewriting (B)", marker_color=AMBER, customdata=[r["title"] for r in top],
+            hovertemplate="%{customdata}<br>Rewriting: %{x:,} B<extra></extra>",
+        ))
+    figure.update_layout(barmode="group")
+    figure.update_yaxes(automargin=True, tickfont=dict(size=11), tickmode="array",
+                        tickvals=y_idx, ticktext=labels)
+    return style(figure, 340)
+
+
+def detector_comparison(summary):
+    """Compare Detector A (Fixed), B (Historical), C (Spark ML), Consensus & Pageviews (Milestone 5)."""
+    if not summary:
+        return empty("No detector comparison counts available yet")
+    labels = ["Fixed (A)", "Historical (B)", "Spark ML (C)", "All-3 Consensus", "Pageview Corrob."]
+    values = [
+        summary.get("detector_a_fixed_count", 0),
+        summary.get("detector_b_historical_count", 0),
+        summary.get("detector_c_spark_ml_count", 0),
+        summary.get("all_three_consensus_count", 0),
+        summary.get("pageview_corroborated_count", 0),
+    ]
+    if not any(values):
+        return empty("No alerts triggered in the selected scope")
+    figure = go.Figure(go.Bar(
+        x=labels, y=values,
+        marker_color=[AMBER, GREEN, BLUE, INK, "#06a6be"],
+        hovertemplate="%{x}: %{y:,} alerts<extra></extra>",
+    ))
+    return style(figure)
+
+
+def revert_risk_calibration(curve_rows):
+    """Precision, Recall, and F1 vs Lift Wing threshold (Milestone 6)."""
+    if not curve_rows:
+        return empty("Revert-risk calibration curve appears after running Milestone 6 evaluation")
+    thresholds = [r.get("threshold") for r in curve_rows]
+    figure = go.Figure()
+    for label, key, color in (
+        ("Precision (%)", "precision_pct", GREEN),
+        ("Recall (%)", "recall_pct", BLUE),
+        ("F1 (%)", "f1_pct", AMBER),
+    ):
+        figure.add_trace(go.Scatter(
+            x=thresholds, y=[r.get(key) for r in curve_rows],
+            name=label, mode="lines+markers", line=dict(color=color, width=2.5),
+        ))
+    figure.add_vline(x=0.8, line_dash="dash", line_color="#98a4b7", annotation_text="0.80 target")
+    figure.update_xaxes(title_text="ML Revert Risk Threshold")
+    figure.update_yaxes(title_text="Score (%)", range=[0, 105])
+    return style(figure)
+
+
+def m4_engine_and_latency(m4_data):
+    """Compare RDD vs DataFrame runtime and Raw JSONL.gz vs Parquet query latency (Milestone 4)."""
+    if not m4_data:
+        return empty("Milestone 4 engine benchmarks appear after running rankings_benchmark.py")
+    rdd_bench = m4_data.get("rdd_vs_dataframe_benchmark", {})
+    lat_bench = m4_data.get("query_latency_benchmark", {})
+    labels = [
+        "RDD (7d agg)",
+        "DataFrame (7d agg)",
+        "Raw JSONL.gz (1d)",
+        "Parquet rankings",
+        "Parquet 46d series",
+    ]
+    values = [
+        rdd_bench.get("rdd_runtime_sec", 0),
+        rdd_bench.get("dataframe_runtime_sec", 0),
+        lat_bench.get("raw_jsonl_gz_1day_top20_sec", 0),
+        lat_bench.get("stored_parquet_rankings_top20_sec", 0),
+        lat_bench.get("stored_parquet_46day_churn_series_sec", 0),
+    ]
+    if not any(values):
+        return empty("Milestone 4 engine benchmarks appear after running rankings_benchmark.py")
+    figure = go.Figure(go.Bar(
+        x=labels, y=values,
+        marker_color=[AMBER, GREEN, AMBER, BLUE, GREEN],
+        hovertemplate="%{x}: %{y:.3f}s<extra></extra>",
+    ))
+    figure.add_hline(y=2.0, line_dash="dash", line_color="#d94b6a", annotation_text="2.0s SLA")
+    figure.update_yaxes(title_text="Seconds")
+    return style(figure)
+
+
+def rf_feature_importances(importances):
+    """Horizontal bar chart of Random Forest feature importances learned by Spark ML."""
+    if not importances:
+        return empty("Random Forest feature importances appear after running Milestone 5 Spark ML")
+    pretty = {
+        "f_distinct_editors": "Distinct human editors",
+        "f_edits_human": "Human edit count",
+        "f_editor_surge": "Editor surge ratio",
+        "f_log_gross_bytes": "Log gross byte churn",
+        "f_velocity_z": "Edit velocity z-score",
+        "f_revert_ratio": "Revert ratio",
+        "f_log_rewriting_bytes": "Log rewriting bytes",
+        "f_bot_share": "Bot edit share",
+    }
+    items = sorted(importances.items(), key=lambda kv: kv[1])
+    labels = [pretty.get(k, k) for k, _ in items]
+    values = [round(v * 100, 2) for _, v in items]
+    figure = go.Figure(go.Bar(
+        x=values, y=labels, orientation="h", marker_color=GREEN,
+        hovertemplate="%{y}: %{x:.2f}%<extra></extra>",
+    ))
+    figure.update_xaxes(title_text="Importance (%)")
+    figure.update_yaxes(automargin=True)
+    return style(figure, 320)
+
+
+def kmeans_clusters(cluster_sizes, normal_cluster_id=None):
+    """Bar chart of KMeans (k=8) window cluster distribution learned by Spark ML."""
+    if not cluster_sizes:
+        return empty("KMeans cluster distribution appears after running Milestone 5 Spark ML")
+    items = sorted(cluster_sizes.items(), key=lambda kv: int(kv[0]))
+    labels = [
+        f"Cluster {cid} (baseline)" if str(cid) == str(normal_cluster_id) else f"Cluster {cid}"
+        for cid, _ in items
+    ]
+    colors = [
+        BLUE if str(cid) == str(normal_cluster_id) else AMBER if count < 2000 else GREEN
+        for cid, count in items
+    ]
+    figure = go.Figure(go.Bar(
+        x=labels, y=[count for _, count in items], marker_color=colors,
+        hovertemplate="%{x}: %{y:,} windows<extra></extra>",
+    ))
+    figure.update_yaxes(title_text="Page windows")
+    return style(figure, 320)
+
+
+def geo_country_breakdown(countries):
+    """Top countries/regions by alerted Wikipedia topics (Milestone 6)."""
+    if not countries:
+        return empty("Country breakdown appears after running Milestone 6 geospatial enrichment")
+    top = countries[:10][::-1]
+    figure = go.Figure(go.Bar(
+        x=[r.get("active_topics", 0) for r in top],
+        y=[r.get("country_or_region", "Unknown") for r in top],
+        orientation="h", marker_color=BLUE,
+        hovertemplate="%{y}: %{x:,} alerted topics<extra></extra>",
+    ))
+    figure.update_xaxes(title_text="Alerted topics")
+    figure.update_yaxes(automargin=True)
+    return style(figure, 320)

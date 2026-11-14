@@ -158,6 +158,7 @@ class DashboardQueries:
                 .withColumn("editor_points", F.col("feature_contributions")["editor_diversity"])
                 .withColumn("content_points", F.col("feature_contributions")["byte_churn"])
                 .withColumn("revert_points", F.col("feature_contributions")["consensus_or_dispute"])
+                .withColumn("pageview_points", F.col("feature_contributions")["pageview_corroboration"])
                 .withColumn(
                     "available_weight",
                     F.when(F.col("pageview_ratio_vs_baseline").isNotNull(), F.lit(100)).otherwise(F.lit(90)),
@@ -266,6 +267,18 @@ class DashboardQueries:
                     (F.col("window_end").cast("long") <= replay_cursor)
                     & (F.col("window_end").cast("long") > replay_cursor - seconds)
                 )
+            elif data_source == "curated finalized windows":
+                max_row = windows.agg(F.max("window_end").cast("long").alias("max_end")).first()
+                max_end = max_row.max_end if max_row else None
+                if max_end is not None:
+                    range_end = _utc_timestamp(datetime.fromtimestamp(max_end, timezone.utc))
+                    range_start = _utc_timestamp(datetime.fromtimestamp(max_end - seconds, timezone.utc))
+                    windows = windows.filter(
+                        (F.col("window_end").cast("long") <= max_end)
+                        & (F.col("window_end").cast("long") > max_end - seconds)
+                    )
+                else:
+                    range_start, range_end = self._range_bounds(duration)
             else:
                 range_start, range_end = self._range_bounds(duration)
                 windows = windows.filter(
@@ -343,6 +356,7 @@ class DashboardQueries:
                         page_base.select(
                             "pageid",
                             F.round(F.col("avg_hourly_edits") / F.lit(div), 3).alias("avg_edits_human"),
+                            F.round(F.col("std_hourly_edits") / F.lit(div), 3).alias("std_edits_human"),
                         ),
                         on="pageid",
                         how="inner",
@@ -407,14 +421,25 @@ class DashboardQueries:
             F.col("gross_churn_bytes").alias("gross_bytes"),
             "net_bytes",
         ).orderBy("day")
-        ranking = rk.groupBy("title").agg(
+        ranking_aggs = [
             F.sum("edits_total").alias("edits"),
             F.sum("gross_churn_bytes").alias("gross_bytes"),
-        ).orderBy(F.desc("edits"), "title")
+        ]
+        if "edits_human" in rk.columns:
+            ranking_aggs.append(F.sum("edits_human").alias("human"))
+        if "edits_bot" in rk.columns:
+            ranking_aggs.append(F.sum("edits_bot").alias("bots"))
+        if "net_bytes" in rk.columns:
+            ranking_aggs.append(F.sum("net_bytes").alias("net_bytes"))
+        if "rewriting_bytes" in rk.columns:
+            ranking_aggs.append(F.sum("rewriting_bytes").alias("rewriting_bytes"))
+        if "distinct_editors" in rk.columns:
+            ranking_aggs.append(F.max("distinct_editors").alias("peak_editors"))
+        ranking = rk.groupBy("title").agg(*ranking_aggs).orderBy(F.desc("edits"), "title")
         return {
             "metrics": metrics,
             "timeline": records(timeline, 366),
-            "rankings": records(ranking, 20),
+            "rankings": records(ranking, 50),
             "baseline": self.optional_records("page_baselines") or self.optional_records("baselines_5m"),
         }
 

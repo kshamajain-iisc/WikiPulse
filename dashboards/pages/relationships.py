@@ -29,10 +29,16 @@ def render(data):
             panel("Article-subject map", "Wikipedia / Wikidata enrichment; no editor IP geolocation",
                   graph(charts.subject_map(points))),
         ], className="chart-grid"),
-        panel("Link evidence", "Source and target labels preserve the recorded edge direction",
-              table(edges, [("Source article", "source_title"), ("Target article", "target_title"),
-                            ("Relationship", "edge_type"), ("Snapshot", "snapshot_ts")])),
-        panel("Location provenance", "Source and quality for every displayed subject record",
-              table(points, [("Article", "title"), ("Country / region", "country_or_region"),
-                    ("Source", "location_source"), ("Quality", "location_quality")], True)),
+        panel("Link evidence", "Source and target labels preserve the recorded edge direction & co-edit spillover",
+              table(edges, [
+                  ("Source article", "source_title"), ("Target article", "target_title"),
+                  ("Relationship", "edge_type"), ("Co-edited", "co_edited_in_window"),
+                  ("Target window edits", "target_edits_in_window"), ("Snapshot", "snapshot_ts"),
+              ], aria_label="Link evidence")),
+        panel("Location provenance", "Source, Wikibase QID, and quality for every displayed subject record",
+              table(points, [
+                  ("Article", "title"), ("Wikibase QID", "wikibase_item"),
+                  ("Country / region", "country_or_region"),
+                  ("Source", "location_source"), ("Quality", "location_quality"),
+              ], True, aria_label="Location provenance")),
     ]

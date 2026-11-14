@@ -7,7 +7,16 @@ from dash.exceptions import PreventUpdate
 
 from dashboards.components import notice
 from dashboards.layout import navigation
-from dashboards.pages import historical, investigation, live, relationships, system
+from dashboards.pages import (
+    historical,
+    investigation,
+    live,
+    milestone4,
+    milestone5,
+    milestone6,
+    relationships,
+    system,
+)
 from dashboards.time_utils import format_india_time
 from src.local_supervisor import request_restart_from_ui, stream_health
 
@@ -17,6 +26,9 @@ PAGES = {
     "/historical": ("historical", historical),
     "/relationships": ("relationships", relationships),
     "/system": ("system", system),
+    "/milestone4": ("milestone4", milestone4),
+    "/milestone5": ("milestone5", milestone5),
+    "/milestone6": ("milestone6", milestone6),
 }
 
 def render_dashboard(service, pathname, search, duration, view, title, start, end,
@@ -85,9 +97,9 @@ def register_callbacks(app, service):
         # health views change only on navigation. Ignore irrelevant global
         # controls and timer ticks so they cannot queue expensive Spark work.
         triggered = set(ctx.triggered_prop_ids)
-        if path in ("/historical", "/relationships", "/system") and triggered:
+        if path in ("/historical", "/relationships", "/system", "/milestone4", "/milestone5", "/milestone6") and triggered:
             allowed = {"location.pathname"}
-            if path == "/historical":
+            if path in ("/historical", "/milestone4"):
                 allowed.add("historical-range.value")
             if not triggered.intersection(allowed):
                 raise PreventUpdate
@@ -131,6 +143,9 @@ def register_callbacks(app, service):
                 "/historical": ("Loading historical intelligence", "Reading daily rankings and baseline coverage…"),
                 "/relationships": ("Loading relationship evidence", "Reading co-edit links and available locations…"),
                 "/system": ("Loading pipeline health", "Checking stream progress, storage, and benchmark summaries…"),
+                "/milestone4": ("Loading Milestone 4", "Reading curated ingestion, baselines, churn rankings, and benchmarks…"),
+                "/milestone5": ("Loading Milestone 5", "Reading Spark ML outcomes, detector comparisons, and evaluation…"),
+                "/milestone6": ("Loading Milestone 6", "Reading graph spillover, revision diffs, subject map, and Lift Wing calibration…"),
             }
             title, description = copy.get(pathname or "/", ("Loading dashboard", "Preparing the requested view…"))
         return {"display": "flex" if busy else "none"}, title, description

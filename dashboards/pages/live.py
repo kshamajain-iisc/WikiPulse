@@ -3,7 +3,31 @@
 from dash import html
 
 from dashboards import charts
-from dashboards.components import graph, heading, metric_row, notice, panel, table
+from dashboards.components import graph, heading, metric_row, notice, panel, pill_row, table
+
+
+def _alert_detector_summary(alerts, m5_summary):
+    if alerts:
+        type_counts = {}
+        for a in alerts:
+            atype = a.get("alert_type") or "UNKNOWN"
+            type_counts[atype] = type_counts.get(atype, 0) + 1
+        summary = {
+            "detector_a_fixed_count": sum(1 for a in alerts if a.get("fixed_threshold_flag")),
+            "detector_b_historical_count": sum(1 for a in alerts if a.get("historical_alert_flag") or (a.get("historical_score") or 0) >= 50),
+            "detector_c_spark_ml_count": sum(1 for a in alerts if a.get("spark_ml_alert_flag") or (a.get("spark_ml_score") or 0) >= 0.5),
+            "all_three_consensus_count": sum(
+                1 for a in alerts
+                if a.get("fixed_threshold_flag")
+                and (a.get("historical_alert_flag") or (a.get("historical_score") or 0) >= 50)
+                and (a.get("spark_ml_alert_flag") or (a.get("spark_ml_score") or 0) >= 0.5)
+            ),
+            "pageview_corroborated_count": sum(1 for a in alerts if a.get("pageview_corroborated")),
+        }
+        return summary, type_counts, "Active window alerts (Fixed vs Historical vs Spark ML)"
+    if m5_summary:
+        return m5_summary, m5_summary.get("alert_type_breakdown", {}), "Corpus-wide Milestone 5 benchmark (no alerts in current live slice)"
+    return {}, {}, "Detector comparison populates when alerts are produced"
 
 
 def render(data):
@@ -12,6 +36,8 @@ def render(data):
     time_range = data.get("range")
     scope = data.get("scope", "selected India Standard Time event-time range")
     bucket = data.get("bucket", "5 minutes")
+    detector_summary, type_counts, detector_subtitle = _alert_detector_summary(alerts, data.get("m5_summary"))
+    type_pills = pill_row([(k.replace("_", " ").title(), f"{v:,}") for k, v in type_counts.items()]) if type_counts else None
     if data.get("view") == "live":
         description = f"Live event data · {scope}. Charts use {bucket} buckets and are clipped to the selected range."
         alert_description = (
@@ -36,15 +62,23 @@ def render(data):
             panel("Knowledge churn", "Gross byte movement and net content change",
                   graph(charts.bytes_timeline(data.get("timeline", []), time_range=time_range))),
         ], className="chart-grid"),
+        panel("Three-detector comparison & classification", detector_subtitle,
+              html.Div([
+                  *([type_pills] if type_pills else []),
+                  graph(charts.detector_comparison(detector_summary)),
+              ])),
         panel("Knowledge-shift feed", alert_description,
               table(alerts, [("Article", "title"), ("Type", "alert_type"),
-                             ("Historical score", "historical_score"), ("Confidence", "confidence"),
-                             ("Reasons", "reasons")], True)
+                             ("Historical score", "historical_score"), ("Spark ML", "spark_ml_score"),
+                             ("Fixed", "fixed_threshold_flag"), ("Pageviews", "pageview_corroborated"),
+                             ("Confidence", "confidence"), ("Reasons", "reasons")], True,
+                    aria_label="Knowledge-shift alert feed")
               if alerts else notice("No finalized alerts yet",
                   "Alerts appear after windows finalize. A page without history can produce a low-confidence activity candidate.")),
         panel("Activity ledger", "Top 100 observed articles · totals above include the full selected scope",
               table(data.get("rankings", []), [("Article", "title"), ("Edits", "edits"),
                     ("Human", "human"), ("Bot", "bots"), ("Gross bytes", "gross_bytes"),
                     ("Net bytes", "net_bytes"), ("Revert actions", "reverts"),
-                    ("Peak window editors ≈", "peak_window_editors")], True)),
+                    ("Peak window editors ≈", "peak_window_editors")], True,
+                    aria_label="Activity ledger")),
     ]
