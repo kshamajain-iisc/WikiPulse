@@ -9,6 +9,7 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from dashboards.time_utils import IST, format_india_time
+from src.config.settings import CURATED_DIR
 from src.dashboard_queries import DashboardPaths, DashboardQueries, WINDOW_SECONDS
 
 
@@ -83,7 +84,18 @@ class DashboardDataService:
                 }
 
     def _cache_ttl(self, page, view):
-        if page in ("historical", "relationships", "system", "milestone4", "milestone5", "milestone6"):
+        if page in (
+            "historical",
+            "relationships",
+            "system",
+            "anomaly_scoring",
+            "ml_reports",
+            "contextual_features",
+            "geospatial_map",
+            "milestone4",
+            "milestone5",
+            "milestone6",
+        ):
             return 300
         if view == "replay":
             return 3
@@ -91,49 +103,84 @@ class DashboardDataService:
 
     def _read_benchmark(self, filename):
         curated_root = getattr(getattr(self.queries, "paths", None), "curated", None)
-        if not isinstance(curated_root, Path):
-            return {}
-        path = curated_root / "benchmarks" / filename
-        return json.loads(path.read_text()) if path.is_file() else {}
+        for root in (CURATED_DIR, curated_root):
+            if isinstance(root, Path):
+                path = root / "benchmarks" / filename
+                if path.is_file():
+                    return json.loads(path.read_text())
+        docs_bench = Path(__file__).resolve().parents[1] / "docs" / "benchmarks" / filename
+        return json.loads(docs_bench.read_text()) if docs_bench.is_file() else {}
+
+    def _historical_alerts_list(self, duration):
+        if hasattr(self.queries, "historical_alerts"):
+            res = self.queries.historical_alerts(duration)
+            if isinstance(res, list):
+                return res
+        res = self.queries.alerts(duration)
+        return res if isinstance(res, list) else []
+
+    def _historical_records_list(self, table_name):
+        if hasattr(self.queries, "historical_optional_records"):
+            res = self.queries.historical_optional_records(table_name)
+            if isinstance(res, list):
+                return res
+        res = self.queries.optional_records(table_name)
+        return res if isinstance(res, list) else []
 
     def _load(self, page, duration, view, title, start, end, replay_cursor=None):
-        if page == "historical":
-            if start in (None, "15d", "1m", "3m") and end is None:
-                start, end = _historical_bounds(start or "1m")
-            return self.queries.historical(start, end)
-        if page == "milestone4":
+        if page in ("historical", "milestone4"):
             if start in (None, "15d", "1m", "3m") and end is None:
                 start, end = _historical_bounds(start or "1m")
             hist = self.queries.historical(start, end)
             hist["ingestion_summary"] = self._read_benchmark("ingestion_summary.json")
             hist["m4_benchmarks"] = self._read_benchmark("milestone4_benchmarks.json")
+            hist["m5_summary"] = self._read_benchmark("milestone5_scoring_summary.json")
+            hist["m6_geospatial"] = self._read_benchmark("milestone6_geospatial_summary.json")
             return hist
-        if page == "milestone5":
-            alerts_5m = self.queries.alerts("5m")
-            alerts_1h = self.queries.alerts("1h")
+        if page in ("anomaly_scoring", "ml_reports", "milestone5"):
+            alerts_5m = self._historical_alerts_list("5m")
+            alerts_1h = self._historical_alerts_list("1h")
             alerts = sorted(
                 (alerts_5m or []) + (alerts_1h or []),
-                key=lambda r: (r.get("spark_ml_score") or 0, r.get("historical_score") or 0),
+                key=lambda r: (r.get("historical_score") or 0, r.get("spark_ml_score") or 0),
                 reverse=True,
-            )[:100]
+            )[:120]
             for alert in alerts:
+                raw_ws = str(alert.get("window_start") or "")
+                alert["window_start_utc"] = raw_ws.replace("T", " ").replace("Z", " UTC") if raw_ws else "—"
                 alert["window_start_ist"] = format_india_time(alert.get("window_start"))
             return {
+                "ingestion_summary": self._read_benchmark("ingestion_summary.json"),
                 "m5_summary": self._read_benchmark("milestone5_scoring_summary.json"),
                 "m5_evaluation": self._read_benchmark("milestone5_evaluation.json"),
                 "window_features": self._read_benchmark("window_features_summary.json"),
+                "case_studies_demo": self._read_benchmark("milestone8_case_studies_demo.json"),
                 "alerts": alerts,
             }
-        if page == "milestone6":
+        if page in ("contextual_features", "milestone6"):
             return {
-                "edges": self.queries.optional_records("graph_edges"),
-                "points": self.queries.optional_records("map_points"),
-                "diffs": self.queries.optional_records("revision_diffs"),
-                "risks": self.queries.optional_records("revert_risk_eval"),
+                "ingestion_summary": self._read_benchmark("ingestion_summary.json"),
+                "edges": self._historical_records_list("graph_edges"),
+                "points": self._historical_records_list("map_points"),
+                "diffs": self._historical_records_list("revision_diffs"),
+                "risks": self._historical_records_list("revert_risk_eval"),
                 "m6_graph_diffs": self._read_benchmark("milestone6_graph_diffs_summary.json"),
                 "m6_geospatial": self._read_benchmark("milestone6_geospatial_summary.json"),
                 "m6_revert_risk": self._read_benchmark("milestone6_revert_risk_summary.json"),
+                "case_studies_demo": self._read_benchmark("milestone8_case_studies_demo.json"),
             }
+        if page == "geospatial_map":
+            geo_mode = view if view in ("days", "windows_5m", "windows_1h") else "days"
+            geo_range = start or "55d"
+            geo_region = title or "ALL"
+            geo_data = {}
+            if hasattr(self.queries, "geospatial_recentchanges"):
+                res = self.queries.geospatial_recentchanges(mode=geo_mode, time_range=geo_range, region=geo_region)
+                if isinstance(res, dict):
+                    geo_data = res
+            geo_data["ingestion_summary"] = self._read_benchmark("ingestion_summary.json")
+            geo_data["m6_geospatial"] = self._read_benchmark("milestone6_geospatial_summary.json")
+            return geo_data
         if page == "relationships":
             missing = [
                 str(self.queries.paths.curated / name)

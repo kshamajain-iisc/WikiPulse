@@ -402,7 +402,7 @@ class LocalProcesses:
             for _, process in reversed(targets):
                 try:
                     os.killpg(process.pid, shutdown_signal)
-                except ProcessLookupError:
+                except (ProcessLookupError, PermissionError):
                     pass
             deadline = time.monotonic() + grace_seconds
             for _, process in targets:
@@ -446,7 +446,7 @@ class LocalProcesses:
                 # A driver may already have exited while its Spark JVM survives.
                 try:
                     os.killpg(process.pid, shutdown_signal)
-                except ProcessLookupError:
+                except (ProcessLookupError, PermissionError):
                     pass
             deadline = time.monotonic() + grace_seconds
             for _, process in self.children:
@@ -459,7 +459,7 @@ class LocalProcesses:
                 for _, process in self.children:
                     try:
                         os.killpg(process.pid, signal.SIGTERM)
-                    except ProcessLookupError:
+                    except (ProcessLookupError, PermissionError):
                         pass
                 return
 

@@ -152,7 +152,7 @@ def main() -> None:
                 progress = query.lastProgress
                 if progress is not None:
                     temporary = progress_path.with_suffix(".tmp")
-                    temporary.write_text(json.dumps(progress))
+                    temporary.write_text(json.dumps(progress, default=str))
                     temporary.replace(progress_path)
             if query.exception() is not None:
                 raise RuntimeError(str(query.exception()))

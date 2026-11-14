@@ -55,7 +55,7 @@ def main():
                 if args.ready_file and query.lastProgress:
                     path = args.ready_file.with_suffix(".progress.json")
                     temporary = path.with_suffix(".tmp")
-                    temporary.write_text(json.dumps(query.lastProgress))
+                    temporary.write_text(json.dumps(query.lastProgress, default=str))
                     temporary.replace(path)
             if query.exception():
                 raise RuntimeError(str(query.exception()))

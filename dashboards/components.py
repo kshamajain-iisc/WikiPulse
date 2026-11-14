@@ -46,7 +46,7 @@ def panel(title, subtitle, content, class_name=""):
                         className="panel " + class_name)
 
 
-def graph(figure, graph_id=None):
+def graph(figure, graph_id=None, show_modebar=False, scroll_zoom=False):
     """Reserve chart space explicitly while allowing the width to follow its card.
 
     Dash's default 100% graph height cannot resolve against an auto-height grid
@@ -54,12 +54,17 @@ def graph(figure, graph_id=None):
     participate in normal layout instead of collapsing underneath the heading.
     """
     height = figure.layout.height or 300
+    config = {"displayModeBar": "hover" if show_modebar else False}
+    if show_modebar:
+        config["displaylogo"] = False
+    if scroll_zoom:
+        config["scrollZoom"] = True
     options = {
         "figure": figure,
         "responsive": True,
         "className": "dashboard-graph",
         "style": {"height": f"{height}px", "minHeight": f"{height}px", "width": "100%"},
-        "config": {"displayModeBar": False},
+        "config": config,
     }
     if graph_id:
         options["id"] = graph_id

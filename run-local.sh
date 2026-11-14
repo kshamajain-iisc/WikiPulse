@@ -5,19 +5,20 @@ set -euo pipefail
 cd -- "$(dirname -- "$0")"
 
 if [[ ! -x .venv/bin/python ]]; then
-    if command -v python3.12 >/dev/null 2>&1; then
-        python3.12 -m venv .venv
+    if [[ -x ../.venv/bin/python ]]; then
+        ln -s ../.venv .venv
+    elif command -v python3.14 >/dev/null 2>&1; then
+        python3.14 -m venv .venv
     else
         python3 -m venv .venv
     fi
 fi
 
-# PyArrow 17 has wheels for these Python versions. Fail before attempting an
-# unsupported source build on a newer system Python.
+# PyArrow 26+ has wheels for Python 3.14; fail on unsupported versions.
 .venv/bin/python - <<'PY'
 import sys
-if not (3, 10) <= sys.version_info[:2] <= (3, 12):
-    raise SystemExit("Use a Python 3.10–3.12 virtual environment (3.12 recommended).")
+if not (3, 10) <= sys.version_info[:2] <= (3, 14):
+    raise SystemExit("Use a Python 3.10–3.14 virtual environment (3.14 recommended).")
 PY
 
 # Install only when a pinned dependency is missing or has a different version.

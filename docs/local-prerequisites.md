@@ -1,6 +1,6 @@
 # Local Run Prerequisites
 - Use macOS or Linux with Bash.
-- Install Python 3.10–3.12; Python 3.12 is recommended.
+- Install Python 3.10–3.14; Python 3.14 is recommended.
 - Install Java 17 and make `java` available on `PATH`.
 - Install Docker with the `docker compose` plugin.
 - Start the Docker-compatible engine before launching WikiPulse.

@@ -179,7 +179,17 @@ def run_end_to_end_dashboard_benchmark(spark, curated_dir: Path) -> dict[str, An
     client = app.server.test_client()
 
     route_checks: dict[str, dict[str, Any]] = {}
-    for route in ("/", "/investigation", "/historical", "/relationships", "/system"):
+    for route in (
+        "/",
+        "/investigation",
+        "/historical",
+        "/anomaly-scoring",
+        "/ml-reports",
+        "/contextual-features",
+        "/geospatial-map",
+        "/relationships",
+        "/system",
+    ):
         t_r = time.perf_counter()
         http_resp = client.get(route)
         search = f"?title={top_article}" if route == "/investigation" else ""

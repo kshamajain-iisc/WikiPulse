@@ -388,7 +388,7 @@ def main() -> int:
         if args.verify_only:
             return 0 if all_ready else 1
 
-        # Pre-warm Dash service cache across all 5 screens before starting HTTP server
+        # Pre-warm Dash service cache across all main screens before starting HTTP server
         paths = DashboardPaths(
             raw=REPO_ROOT / "data/raw/wikipedia_edits",
             live=REPO_ROOT / "data/live_activity",
@@ -396,7 +396,17 @@ def main() -> int:
             curated=args.curated,
         )
         service = DashboardDataService(DashboardQueries(spark, paths), cache_seconds=120)
-        for screen in ("live", "investigation", "historical", "relationships", "system"):
+        for screen in (
+            "live",
+            "investigation",
+            "historical",
+            "anomaly_scoring",
+            "ml_reports",
+            "contextual_features",
+            "geospatial_map",
+            "relationships",
+            "system",
+        ):
             _ = service.load(screen, "5m", "finalized", None, None, None)
 
         app = create_app(service, default_view="finalized")

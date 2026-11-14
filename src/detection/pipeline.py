@@ -86,8 +86,12 @@ def pin_contract(checkpoint: Path, source: Path, baselines: Path, output: Path, 
     }
     manifest = checkpoint / "detector.json"
     if manifest.exists():
-        if json.loads(manifest.read_text()) != contract:
+        existing = json.loads(manifest.read_text())
+        immutable_keys = ("version", "config", "source", "output", "duration")
+        if any(existing.get(k) != contract[k] for k in immutable_keys):
             raise ValueError("Detector inputs changed; use a new checkpoint and output directory")
+        if existing != contract:
+            manifest.write_text(json.dumps(contract, indent=2))
     else:
         if (output / "scored_windows" / f"duration={duration}").exists():
             raise ValueError("Output already belongs to another checkpoint; choose a new output")

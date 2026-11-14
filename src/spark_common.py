@@ -78,6 +78,7 @@ def create_spark(app_name, with_kafka=True):
         .master(SPARK_MASTER)
         .config("spark.driver.host", "127.0.0.1")
         .config("spark.driver.bindAddress", "127.0.0.1")
+        .config("spark.driver.memory", os.getenv("SPARK_DRIVER_MEMORY", "512m"))
         .config("spark.sql.shuffle.partitions", "3")
         .config("spark.sql.session.timeZone", "UTC")
         .config(

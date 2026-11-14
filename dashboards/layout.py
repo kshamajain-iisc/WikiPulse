@@ -6,11 +6,11 @@ ROUTES = [
     ("/", "01", "Live pulse"),
     ("/investigation", "02", "Page investigation"),
     ("/historical", "03", "Historical intelligence"),
-    ("/relationships", "04", "Relationships & map"),
-    ("/system", "05", "Engineering & health"),
-    ("/milestone4", "06", "M4 · Baselines & churn"),
-    ("/milestone5", "07", "M5 · Anomaly & Spark ML"),
-    ("/milestone6", "08", "M6 · Context & risk"),
+    ("/anomaly-scoring", "04", "Anomaly scoring"),
+    ("/ml-reports", "05", "ML tests & reports"),
+    ("/contextual-features", "06", "Context, graph & risk"),
+    ("/geospatial-map", "07", "Geospatial map"),
+    ("/system", "08", "Engineering & health"),
 ]
 
 
@@ -49,7 +49,14 @@ def shell(default_view="live"):
             ], id="loading-banner", className="loading-banner", role="status",
                **{"aria-live": "polite"}, style={"display": "none"}),
             html.Header([
-                html.Div([html.Span(className="status-dot"), html.Span("ENWIKI / OBSERVATORY")], className="workspace-name"),
+                html.Div([
+                    html.Span(className="status-dot"),
+                    html.Span("ENWIKI / OBSERVATORY"),
+                    html.Span([
+                        html.Span(className="backend-spinner-icon"),
+                        html.Span("Loading…", className="backend-loading-text"),
+                    ], id="backend-loading-icon", className="backend-loading-pill", title="Backend query in progress"),
+                ], className="workspace-name"),
                 html.Div([
                     html.Div([
                         html.Span("Checking stream…", id="stream-health-label", className="health-tag health-unknown"),
@@ -70,11 +77,11 @@ def shell(default_view="live"):
                         options=[{"label": "5 min", "value": "5m"},
                                  {"label": "1 hour", "value": "1h"},
                                  {"label": "6 hours", "value": "6h"}],
-                    )], className="control window-control"),
+                    )], id="live-window-control", className="control window-control"),
                     html.Div([html.Label("RESULTS"), dcc.Dropdown(id="view", value=default_view, clearable=False,
                         options=[{"label": "Live preview", "value": "live"},
                                  {"label": "Finalized windows", "value": "finalized"},
-                                 {"label": "Replay stored activity", "value": "replay"}])], className="control"),
+                                 {"label": "Replay stored activity", "value": "replay"}])], id="live-view-control", className="control"),
                     html.Div([
                         html.Label("REPLAY"),
                         dcc.Checklist(id="replay-playing", options=[{"label": "Play", "value": "play"}],
@@ -87,16 +94,16 @@ def shell(default_view="live"):
                                      {"label": "20×", "value": 20}]),
                     ], id="replay-speed-control", className="control replay-control", style={"display": "none"}),
                     html.Div([html.Label("ARTICLE"), dcc.Dropdown(id="article", placeholder="Leading article / choose…",
-                        options=[], clearable=True)], className="control article-control"),
+                        options=[], clearable=True)], id="live-article-control", className="control article-control"),
                     html.Div([
                         html.Label("HISTORICAL RANGE"),
                         dcc.Dropdown(id="historical-range", value="1m", clearable=False,
                             options=[{"label": "15 days", "value": "15d"},
                                      {"label": "1 month", "value": "1m"},
                                      {"label": "3 months", "value": "3m"}]),
-                    ], className="control historical-range-control"),
+                    ], id="historical-range-wrapper", className="control historical-range-control"),
                     dcc.Checklist(id="pause", options=[{"label": "Pause refresh", "value": "pause"}], value=[], className="pause-control"),
-                ], className="controls"),
+                ], id="top-controls", className="controls"),
                 html.Div("Starting dashboard queries…", id="source-status", className="source-status", role="status"),
                 html.Div(id="page-body", tabIndex=-1),
                 html.Footer("WIKIPULSE  /  DATA ENGINEERING AT SCALE  ·  Evidence first. Live times shown in India Standard Time (IST)."),
