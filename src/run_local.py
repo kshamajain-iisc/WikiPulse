@@ -23,6 +23,7 @@ from urllib.error import URLError
 from urllib.request import urlopen
 
 from src.kafka_common import KAFKA_ALERT_TOPIC, KAFKA_SERVERS, KAFKA_TOPIC
+from src.stream_control import atomic_json, read_json, stop_and_drain
 
 ROOT = Path(__file__).resolve().parents[1]
 LIVE_DIRECTORY = ROOT / "data/live_activity"
@@ -568,12 +569,39 @@ def main() -> int:
                 "Press Ctrl+C to stop. Logs are in logs/local/.",
                 flush=True,
             )
+            streaming_enabled = True
+            control_error = None
             while True:
                 try:
                     processes.check_running()
-                    write_supervisor_state(processes, "running")
+                    write_supervisor_state(processes, "broken" if control_error else "running" if streaming_enabled else "idle", control_error)
                 except RuntimeError as error:
                     write_supervisor_state(processes, "broken", str(error))
+
+                command_path = lock_directory / "stream-control.request.json"
+                if command_path.exists():
+                    command = read_json(command_path)
+                    action = command.get("action")
+                    if action in ("start", "stop"):
+                        write_supervisor_state(processes, "draining" if action == "stop" else "starting")
+                        try:
+                            if action == "stop":
+                                result = stop_and_drain(processes, ROOT)
+                                streaming_enabled = False
+                            else:
+                                processes.stop_named(STREAM_SERVICES)
+                                start_stream_services(processes, lock_directory)
+                                streaming_enabled = True
+                                result = {"message": "Stream started from compatible checkpoints.",
+                                          "source_gap": "Capture resumes from the source connection; any stopped interval may be incomplete."}
+                            atomic_json(lock_directory / "stream-control.result.json", {**command, **result, "ok": True})
+                            control_error = None
+                            write_supervisor_state(processes, "running" if streaming_enabled else "idle")
+                        except Exception as error:
+                            control_error = str(error)
+                            atomic_json(lock_directory / "stream-control.result.json", {**command, "ok": False, "message": str(error)})
+                            write_supervisor_state(processes, "broken", str(error))
+                    command_path.unlink(missing_ok=True)
 
                 if RESTART_REQUEST.exists():
                     RESTART_REQUEST.unlink(missing_ok=True)
@@ -581,6 +609,8 @@ def main() -> int:
                     try:
                         processes.stop_named(STREAM_SERVICES)
                         start_stream_services(processes, lock_directory)
+                        streaming_enabled = True
+                        control_error = None
                         write_supervisor_state(processes, "running")
                         print("Stream services restarted; checkpoints and stored data were preserved.", flush=True)
                     except (RuntimeError, OSError, subprocess.TimeoutExpired) as error:

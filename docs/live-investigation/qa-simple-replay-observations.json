@@ -1,0 +1,73 @@
+{
+  "checked_at": "2026-11-16T16:00:06.969Z",
+  "desktop": {
+    "overflow": false,
+    "settingsOpen": false,
+    "visibleActionLabels": [
+      "Start replay",
+      "Stop replay"
+    ],
+    "width": 1440
+  },
+  "mobile": {
+    "actions": [
+      "Start replay",
+      "Stop replay"
+    ],
+    "overflow": false,
+    "width": 390
+  },
+  "title_samples": [
+    {
+      "phase": "initial load",
+      "title": "WikiPulse · Knowledge intelligence",
+      "at": 1794844412747
+    },
+    {
+      "phase": "Start replay request",
+      "title": "WikiPulse · Knowledge intelligence",
+      "at": 1794844423195
+    },
+    {
+      "phase": "Stop replay completed",
+      "title": "WikiPulse · Knowledge intelligence",
+      "at": 1794844461565
+    },
+    {
+      "phase": "Kafka Start request",
+      "title": "WikiPulse · Knowledge intelligence",
+      "at": 1794844492158
+    },
+    {
+      "phase": "Kafka background processing",
+      "title": "WikiPulse · Knowledge intelligence",
+      "at": 1794844546720
+    },
+    {
+      "phase": "Kafka Stop request",
+      "title": "WikiPulse · Knowledge intelligence",
+      "at": 1794844547099
+    },
+    {
+      "phase": "Returned to saved playback",
+      "title": "WikiPulse · Knowledge intelligence",
+      "at": 1794844621890
+    },
+    {
+      "phase": "final view",
+      "title": "WikiPulse · Knowledge intelligence",
+      "at": 1794844806966
+    }
+  ],
+  "errors": [],
+  "saved_start_cursor": "00:00:01 UTC",
+  "saved_stop_cursor": "00:31:05 UTC",
+  "kafka_stop": {
+    "published": 1342,
+    "consumed": 1342,
+    "committed": 1342,
+    "actual_parquet_rows": 1342,
+    "pending": 0,
+    "rejected": 0
+  }
+}

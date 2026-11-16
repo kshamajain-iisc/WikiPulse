@@ -1,0 +1,127 @@
+{
+  "managed_state": {
+    "state": "running",
+    "supervisor_pid": 66017,
+    "updated_at": "2026-11-16T15:17:48.393754+00:00",
+    "services": {
+      "dashboard": {
+        "pid": 66109,
+        "running": true
+      },
+      "collector": {
+        "pid": 66128,
+        "running": true
+      },
+      "bronze": {
+        "pid": 66129,
+        "running": true
+      },
+      "windows-5m": {
+        "pid": 66180,
+        "running": true
+      },
+      "windows-1h": {
+        "pid": 66372,
+        "running": true
+      },
+      "detection-5m": {
+        "pid": 66536,
+        "running": true
+      },
+      "detection-1h": {
+        "pid": 67252,
+        "running": true
+      }
+    },
+    "error": null
+  },
+  "idle_callback_status": 204,
+  "summary_job": {
+    "elapsed_seconds": 1.715,
+    "error": null,
+    "id": "8cc372fb63674826bf1a438844fc9742",
+    "logs": [
+      {
+        "message": "Request accepted; waiting for the bounded activity worker",
+        "stage": "QUEUED",
+        "time": "2026-11-16T15:17:17.441041Z"
+      },
+      {
+        "message": "Reading filtered activity with the Parquet serving worker",
+        "stage": "START",
+        "time": "2026-11-16T15:17:17.442104Z"
+      },
+      {
+        "message": "Canonical edit events",
+        "stage": "SOURCE",
+        "time": "2026-11-16T15:17:18.458366Z"
+      },
+      {
+        "message": "113,952 filtered rows fetched \u00b7 9,331,325 B decoded Arrow payload",
+        "stage": "READ",
+        "time": "2026-11-16T15:17:18.815191Z"
+      },
+      {
+        "message": "119,546 filtered rows fetched \u00b7 9,788,492 B decoded Arrow payload",
+        "stage": "READ",
+        "time": "2026-11-16T15:17:18.827815Z"
+      },
+      {
+        "message": "Aggregating 119,546 unique matching edits",
+        "stage": "AGGREGATE",
+        "time": "2026-11-16T15:17:18.858365Z"
+      },
+      {
+        "message": "119,546 edits \u00b7 83,046 articles \u00b7 100 ranked rows returned",
+        "stage": "RESULT",
+        "time": "2026-11-16T15:17:19.122777Z"
+      },
+      {
+        "message": "Primary activity ready; loading optional evidence independently",
+        "stage": "CHARTS",
+        "time": "2026-11-16T15:17:19.123359Z"
+      },
+      {
+        "message": "Looking up alerts in the selected range",
+        "stage": "EVIDENCE",
+        "time": "2026-11-16T15:17:19.123366Z"
+      },
+      {
+        "message": "Activity and available evidence are ready",
+        "stage": "COMPLETE",
+        "time": "2026-11-16T15:17:19.156276Z"
+      }
+    ],
+    "metrics": {
+      "arrow_payload_bytes": 9788492,
+      "cache": "miss",
+      "duplicates": 0,
+      "events_analyzed": 119546,
+      "events_matched": 119546,
+      "input_file_bytes": 23228392,
+      "query_seconds": 1.714213250001194,
+      "queue_seconds": 0.0010823750053532422,
+      "rejected_rows": 0,
+      "response_bytes": 21141,
+      "rows_fetched": 119546,
+      "rows_returned": 124,
+      "scope_end": "2026-10-29T00:00:00Z",
+      "scope_start": "2026-10-28T00:00:00Z",
+      "selected_files": 1,
+      "unique_events": 119546
+    },
+    "revision": 2,
+    "spec": {
+      "cursor": 0,
+      "day": "2026-10-28",
+      "finalized": false,
+      "horizon": "5m",
+      "kind": "summary",
+      "mode": "stored",
+      "page": "live",
+      "title": null,
+      "zone": "UTC"
+    },
+    "status": "complete"
+  }
+}

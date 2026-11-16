@@ -1,0 +1,30 @@
+{
+  "checked_at": "2026-11-16T15:39:07.895Z",
+  "default_seconds": 30,
+  "options_seconds": [
+    10,
+    30,
+    60
+  ],
+  "browser_persistence": "1 minute survived reload; 30 seconds preserved in Page Investigation",
+  "thirty_second_interval_held_for": 12.209,
+  "paused_replay_held_for": 56.756,
+  "playback_sample": {
+    "initial": {
+      "clock": "00:00:00 UTC",
+      "job": "/api/activity/jobs/20d470599d314624a56818205597271a/log",
+      "at": 1794843339784
+    },
+    "sample": {
+      "clock": "01:19:55 UTC",
+      "job": "/api/activity/jobs/f5aba14025c24b4a88c388c452307b05/log",
+      "elapsed": 48.277
+    }
+  },
+  "desktop": {
+    "width": 1440,
+    "live_control_rows": 1,
+    "horizontal_overflow": false
+  },
+  "browser_errors_during_cadence_checks": []
+}

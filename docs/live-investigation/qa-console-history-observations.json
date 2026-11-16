@@ -1,0 +1,79 @@
+{
+  "checks": {
+    "automatic_refresh_appends": true,
+    "manual_refresh_keeps_previous_history": true,
+    "live_to_investigation_keeps_history": true,
+    "browser_reload_keeps_history": true,
+    "local_restore_rotation_and_memory_fallback": "unit tested",
+    "kafka_probe_nonblocking_and_read_only": "unit tested; real broker reachable",
+    "download_attachment_http_status": 200,
+    "browser_download_event": "not surfaced by in-app browser; HTTP attachment independently verified",
+    "desktop_console_on_right": true,
+    "desktop_horizontal_overflow": false
+  },
+  "download_entries": 340,
+  "download_refresh_summaries": 32,
+  "download_bytes": 103560,
+  "sample_summary": {
+    "time": "2026-11-16T16:15:24.837323Z",
+    "refresh": "75004645ac104d2f89f0d4159f2d01df",
+    "stage": "SUMMARY",
+    "message": "Refresh complete in 1.53 s \u00b7 119,546 rows fetched \u00b7 119,546 events analyzed \u00b7 9.79 MB decoded \u00b7 0 matching edits",
+    "metrics": {
+      "cache": "miss",
+      "queue_seconds": 0.0004835410072701052,
+      "input_file_bytes": 23228392,
+      "selected_files": 1,
+      "scope_start": "2026-10-28T00:00:00Z",
+      "scope_end": "2026-10-29T00:00:00Z",
+      "rows_fetched": 119546,
+      "arrow_payload_bytes": 9788492,
+      "rejected_rows": 0,
+      "unique_events": 119546,
+      "duplicates": 0,
+      "events_analyzed": 119546,
+      "events_matched": 0,
+      "rows_returned": 0,
+      "response_bytes": 944,
+      "query_seconds": 1.5306211249990156,
+      "processing_seconds": 1.531
+    }
+  },
+  "tests": "86 passed; final history/failure/cancellation assertions: 10 passed",
+  "runtime": {
+    "state": "running",
+    "supervisor_pid": 59589,
+    "updated_at": "2026-11-16T16:21:02.673052+00:00",
+    "services": {
+      "dashboard": {
+        "pid": 59615,
+        "running": true
+      },
+      "collector": {
+        "pid": 59659,
+        "running": true
+      },
+      "bronze": {
+        "pid": 59661,
+        "running": true
+      },
+      "windows-5m": {
+        "pid": 59728,
+        "running": true
+      },
+      "windows-1h": {
+        "pid": 59850,
+        "running": true
+      },
+      "detection-5m": {
+        "pid": 60018,
+        "running": true
+      },
+      "detection-1h": {
+        "pid": 60652,
+        "running": true
+      }
+    },
+    "error": null
+  }
+}

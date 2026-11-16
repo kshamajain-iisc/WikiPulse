@@ -53,7 +53,10 @@ def read_kafka_events(spark: SparkSession, starting_offsets: str) -> DataFrame:
         .option("subscribe", KAFKA_TOPIC)
         .option("startingOffsets", starting_offsets)
         .option("maxOffsetsPerTrigger", os.getenv("SPARK_MAX_OFFSETS", "50000"))
-        .option("failOnDataLoss", "true")
+        .option(
+            "failOnDataLoss",
+            os.getenv("SPARK_FAIL_ON_DATA_LOSS", "true").lower() not in {"0", "false", "no"},
+        )
         .load()
     )
     # Reuse the shared parser so inspection and storage enforce the same contract.

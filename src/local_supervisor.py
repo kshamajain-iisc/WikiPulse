@@ -54,6 +54,8 @@ def stream_health() -> dict:
         "broken": "BROKEN · A stream service stopped",
         "stale": "STALE · No recent Wikipedia events",
         "running": "LIVE · Stream services running",
+        "idle": "STREAM STOPPED · Dashboard and stored activity available",
+        "draining": "DRAINING · Committing admitted events before stopping",
     }.get(status, "STREAM STATUS · " + status.upper())
     if event_time and status == "running":
         label += f" · Last event {event_time}"
