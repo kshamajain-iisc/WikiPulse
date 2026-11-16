@@ -92,3 +92,24 @@ query duration counters already exist. The dashboard queries committed event fil
 not Kafka directly. Kafka retained data cannot be inferred from cumulative offsets
 or Parquet sizes; a read-only low/high watermark probe can show an approximate retained
 record count, with explicit unknown bytes and a sampled timestamp.
+
+## Upstream EventStreams since
+
+Official EventStreams documentation and its OpenAPI spec confirm `since` as ISO UTC
+or epoch milliseconds; Last-Event-ID takes precedence on reconnect. Retention is
+stream dependent (typically 7–31 days), and unavailable timestamps can fall back to
+latest. Existing collector uses only a process-local resume ID. Historical fetches
+must still publish actual upstream events through Kafka. Spark raw files partition
+by ingestion date, so existing event-day partition pruning would hide newly fetched
+old events. Stateful finalized windows already have current watermarks; old arrivals
+must not be presented as recomputed historical anomaly evidence.
+
+## Catch-up freshness and collector ownership
+
+The delayed date-switch test showed that stream_health compares finalized event time
+with wall clock, so a healthy historical source is falsely stale. Collector status
+already contains an actual data-activity timestamp and matching selected source;
+raw Spark progress supplies independent ingestion freshness. Failed workers and stale
+collector/ingestion progress must remain warnings. A separate orphan collector was
+also confirmed to publish live events into the same topic; collector startup needs
+an OS advisory lock held across producer creation, ingestion and flush.

@@ -150,3 +150,35 @@ individual observations, not p95 guarantees or a telemetry-overhead benchmark.
 
 The follow-up UI and one-by-one feature results, including the long-pause Kafka
 reconciliation and 66 passing tests, are recorded in [implementation-log.md](implementation-log.md).
+
+## Wikipedia stream start (Live now / Since timestamp)
+
+The Live source controls offer **Live now** (the default for a new local-server
+session) and **Since timestamp**. Choose a UTC date and `HH:MM:SS`, then press
+**Apply stream source**. This changes shared ingestion; it is separate from saved
+playback. The collector connects to Wikimedia with `?since=<UTC timestamp>`, sends
+actual English-mainspace edits to Kafka, and continues receiving live events after
+catching up. Reconnects use the last successfully processed SSE ID, so they do not
+restart the entire selected period. Choosing Live now and applying removes `since`.
+Standalone usage: `python -m src.collector --since 2026-11-01T00:00:00Z` (example;
+choose a recent timestamp).
+
+Wikimedia's [EventStreams documentation](https://wikitech.wikimedia.org/wiki/Event_Platform/EventStreams_HTTP_Service#Historical_Consumption)
+and [OpenAPI spec](https://github.com/wikimedia/mediawiki-services-eventstreams/blob/master/spec.yaml)
+state that history is retention limited, typically one to several weeks (7–31 days),
+and a timestamp without matching retained offsets can fall back to latest. Fifteen
+days is a request, never a guarantee of complete capture. The UI reports requested
+start, actual first/latest captured edit, events and serialized payload bytes queued
+to Kafka. Delivery counters are separate from queued payload; neither claims disk
+or network byte measurements. Historical catch-up runs at upstream delivery speed,
+not the saved replay speed.
+
+Live charts retain the chosen current 5-minute/1-hour/6-hour horizon. To inspect
+fetched past data, choose Stored activity and its event date. A small local
+`data/run/capture-days.json` maps observed event dates to their ingestion partitions,
+so old events arriving today remain discoverable/readable after a restart. Stored
+queries still enforce exact event-time boundaries and stable-ID deduplication.
+Applying a source while running restarts only the collector, preserving Kafka,
+Spark workers and checkpoints. Existing finalized windows/anomaly scores are not
+retroactively rebuilt from late historical arrivals. Source changes and real capture
+counts appear in the processing console, which stays collapsed until opened.

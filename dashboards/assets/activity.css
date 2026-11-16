@@ -93,3 +93,18 @@
 @media (max-width:1050px) { .pulse-toolbar { grid-template-columns:repeat(2,minmax(0,1fr)); } .pulse-toolbar.is-stored .pulse-article-control { grid-column:auto; } .pulse-results.is-console-open { grid-template-columns:minmax(0,1fr); } #pulse-console[open] { position:fixed; top:90px; right:16px; width:340px; max-width:calc(100vw - 32px); max-height:calc(100dvh - 106px); } }
 @media (max-width:650px) { .pulse-toolbar { padding:12px; gap:12px; } .pulse-toolbar.is-stored .pulse-article-control { grid-column:span 2; } .pulse-display-control { grid-column:span 2; } .pulse-toolbar.is-live .pulse-article-control { grid-column:span 2; } .pulse-toolbar label:has(input[type=radio]) { font-size:11px; padding:7px 4px; } .pulse-clock-copy { margin-left:0; } .pulse-status-line { align-items:start; } #pulse-console[open] { top:16px; max-height:calc(100dvh - 32px); } }
 @media (prefers-reduced-motion:reduce) { .pulse-skeleton-title,.pulse-skeleton-card,.pulse-skeleton-chart { animation:none; } }
+.pulse-source-start { display:flex; align-items:center; flex-wrap:wrap; gap:10px 14px; padding:12px 14px; margin-bottom:10px; background:var(--surface); border:1px solid var(--line); border-radius:10px; font-size:12px; }
+.pulse-source-start > label { font-size:10px; font-weight:700; color:var(--muted); letter-spacing:.05em; }
+#pulse-source-start { display:flex; flex-wrap:wrap; gap:10px; }
+#pulse-source-start label { display:flex; gap:5px; align-items:center; }
+#pulse-source-since-control { align-items:center; gap:10px; flex-wrap:wrap; }
+#pulse-source-since-control > label:first-child { font-size:10px; color:var(--muted); }
+#pulse-source-since-control label { display:flex; align-items:center; gap:6px; }
+#pulse-source-time { flex:1 1 auto; width:100%; min-width:0; box-sizing:border-box; padding:8px; border:0; border-radius:6px; color:var(--ink); background:var(--surface); font:12px ui-monospace,monospace; }
+#pulse-source-since-control .DateInput { width:155px; }
+#pulse-source-since-control .DateInput_input { font-size:12px; padding:8px; }
+.pulse-source-start > small,#pulse-source-command,#pulse-source-status { flex-basis:100%; color:var(--muted); font-size:11px; line-height:1.65; }
+#pulse-source-command:empty,#pulse-source-status:empty { display:none; }
+#pulse-source-status small { display:block; }
+#pulse-source-since-control > label { flex-shrink:0; white-space:nowrap; }
+#pulse-source-since-control .dash-input-container { flex:0 0 110px; width:110px; min-width:110px; }

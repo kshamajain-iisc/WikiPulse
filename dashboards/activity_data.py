@@ -166,6 +166,7 @@ class ActivityReader:
                                 found.add(date.fromisoformat(part.name.split("=", 1)[1]))
                             except ValueError:
                                 continue
+                found.update(date.fromisoformat(d) for d in self.capture_days())
                 days = sorted(found, reverse=True)
                 self._catalog = (time.monotonic(), days)
             # An IST day can overlap the next UTC source date. Mark dates as
@@ -182,6 +183,17 @@ class ActivityReader:
                  self.paths.curated / "alerts", self.paths.curated / "page_baselines")
         return tuple(p.stat().st_mtime_ns if p.exists() else 0 for p in roots)
 
+    def capture_days(self):
+        runtime = getattr(self.paths, "runtime", None)
+        if runtime is None:
+            return {}
+        try:
+            mapping = json.loads((runtime / "capture-days.json").read_text())
+            return {date.fromisoformat(day).isoformat(): [date.fromisoformat(d).isoformat() for d in partitions]
+                    for day, partitions in mapping.items() if isinstance(partitions, list)}
+        except (OSError, ValueError, TypeError, AttributeError):
+            return {}
+
     def _sources(self, spec, start, end):
         first = datetime.fromtimestamp(start, UTC).date()
         last = datetime.fromtimestamp(max(start, end - 0.001), UTC).date()
@@ -196,6 +208,9 @@ class ActivityReader:
         # Bronze fills event-time gaps and supplies recent dates. Stable event
         # identity deduplicates any overlap with canonical history.
         raw_days = days | {(first - timedelta(days=1)).isoformat(), (last + timedelta(days=1)).isoformat()}
+        for day, ingestion_days in self.capture_days().items():
+            if day in days:
+                raw_days.update(ingestion_days)
         raw = [p for p in self.files(self.paths.raw)
                if getattr(self, "replay_run", False) or any(f"ingestion_date={d}" in str(p) for d in raw_days)]
         if raw:

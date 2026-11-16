@@ -79,6 +79,19 @@ def activity_shell():
             html.Div(id="pulse-kafka-status", role="status", className="pulse-kafka-status"),
         ], id="pulse-replay-controls", className="pulse-replay-bar", style={"display": "none"}),
         html.Div([
+            html.Div([
+                html.Label("WIKIPEDIA STREAM START"),
+                dcc.RadioItems(id="pulse-source-start", value="live", inline=True,
+                    options=[{"label": "Live now", "value": "live"}, {"label": "Since timestamp", "value": "since"}]),
+                html.Div([html.Label("SINCE (UTC)"),
+                    dcc.DatePickerSingle(id="pulse-source-date", display_format="DD MMM YYYY", placeholder="Choose UTC date", clearable=False),
+                    html.Label(["UTC time", dcc.Input(id="pulse-source-time", type="text", value="00:00:00", placeholder="HH:MM:SS", maxLength=8)])],
+                    id="pulse-source-since-control", style={"display": "none"}),
+                html.Button("Apply stream source", id="pulse-apply-source", n_clicks=0, className="pulse-button"),
+                html.Small("Changes shared Wikipedia capture. Since fetches available history, then continues live. Charts keep the selected activity horizon; past dates appear in Stored activity. Upstream retention varies (typically 7–31 days)."),
+                html.Div(id="pulse-source-command", role="status"),
+                html.Div(id="pulse-source-status", role="status"),
+            ], className="pulse-source-start"),
             dcc.Checklist(id="pulse-finalized", value=[], options=[{"label": "Show finalized windows (watermark-delayed)", "value": "yes"}]),
         ], id="pulse-live-controls", className="pulse-advanced"),
         html.Div("Display frozen. Capture and processing continue. Clear Freeze display to load the latest snapshot.",
@@ -195,6 +208,30 @@ def pretty_bytes(value):
 
 
 def register_activity_callbacks(app, workspace):
+    @app.callback(Output("pulse-source-start", "value"), Output("pulse-source-date", "date"),
+                  Output("pulse-source-time", "value"), Input("location", "pathname"))
+    def hydrate_source(path):
+        if path not in ROUTES:
+            raise PreventUpdate
+        source = read_json(workspace.paths.runtime / "stream-source.json")
+        since = source.get("since")
+        return ("since", since[:10], since[11:19]) if since else ("live", None, "00:00:00")
+
+    @app.callback(Output("pulse-source-since-control", "style"), Input("pulse-source-start", "value"))
+    def source_fields(mode):
+        return {"display": "flex" if mode == "since" else "none"}
+
+    @app.callback(Output("pulse-source-command", "children"), Input("pulse-apply-source", "n_clicks"),
+                  State("pulse-source-start", "value"), State("pulse-source-date", "date"),
+                  State("pulse-source-time", "value"), State("location", "pathname"), prevent_initial_call=True)
+    def configure_source(clicks, mode, day, clock, path):
+        if not clicks or path not in ROUTES:
+            raise PreventUpdate
+        source = {"mode": mode, "since": f"{day}T{clock}Z" if day and clock else None}
+        result = request_action("source", uuid.uuid4().hex, os.environ.get("WIKIPULSE_CONTROL_TOKEN"), source=source)
+        workspace.history.append("source", "SOURCE", result["message"])
+        return result["message"]
+
     @app.callback(
         Output("pulse-dates", "data"), Output("pulse-date", "date"),
         Output("pulse-mode", "value"), Output("pulse-kind", "value"), Output("pulse-horizon", "value"),
@@ -240,8 +277,11 @@ def register_activity_callbacks(app, workspace):
         return days[index] if 0 <= index < len(days) else no_update
 
     @app.callback(Output("pulse-dates", "data", allow_duplicate=True), Input("pulse-zone", "value"),
+                  Input("pulse-mode", "value"), Input("health-refresh", "n_intervals"), State("location", "pathname"),
                   prevent_initial_call=True)
-    def captured_dates(zone):
+    def captured_dates(zone, mode, tick, path):
+        if path not in ROUTES or mode != "stored":
+            raise PreventUpdate
         return [o["value"] for o in workspace.reader.catalog(zone)]
 
     @app.callback(Output("pulse-date-previous", "disabled"), Output("pulse-date-next", "disabled"),
@@ -546,7 +586,8 @@ def register_activity_callbacks(app, workspace):
         return result["message"]
 
     @app.callback(Output("pulse-stream-metrics", "children"), Output("pulse-start-stream", "disabled"),
-                  Output("pulse-stop-stream", "disabled"), Input("health-refresh", "n_intervals"),
+                  Output("pulse-stop-stream", "disabled"), Output("pulse-source-status", "children"),
+                  Output("pulse-apply-source", "disabled"), Input("health-refresh", "n_intervals"),
                   Input("location", "pathname"))
     def stage_health(tick, path):
         if path not in ROUTES:
@@ -562,6 +603,19 @@ def register_activity_callbacks(app, workspace):
             if receipt.get("source_gap"):
                 details.append(html.P(receipt["source_gap"]))
         managed = health["managed"] and bool(os.environ.get("WIKIPULSE_CONTROL_TOKEN"))
-        return (details, busy or not managed or health["state"] == "running",
-                busy or not managed or health["state"] == "idle")
+        source = read_json(workspace.paths.runtime / "stream-source.json")
+        progress = read_json(workspace.paths.runtime / "collector-source.progress.json")
+        source_label = "Since " + source["since"] if source.get("since") else "Live now"
+        source_status = [html.Strong("Active Wikipedia source: " + source_label)]
+        if progress.get("since") == source.get("since"):
+            source_status.append(html.Span(f" · {progress.get('state', 'waiting')} · {progress.get('queued_events', 0):,} events / "
+                                          f"{pretty_bytes(progress.get('queued_bytes', 0))} queued to Kafka"))
+            if source.get("since") and progress.get("first_event"):
+                source_status.append(html.Span(" · First captured event: " + progress["first_event"]))
+            if progress.get("latest_event"):
+                source_status.append(html.Span(" · Latest captured event: " + progress["latest_event"]))
+        if source.get("since"):
+            source_status.append(html.Small("Capture coverage depends on upstream retention. Live charts use the current activity horizon; use Stored activity to view past dates. Historical arrivals do not rebuild finalized anomaly scores."))
+        return (details, busy or not managed or health["state"] in ("running", "catching_up", "reconnecting", "stale"),
+                busy or not managed or health["state"] == "idle", source_status, busy or not managed)
 

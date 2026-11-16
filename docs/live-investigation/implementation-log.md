@@ -285,3 +285,74 @@ refreshes do not alter that choice. Its log collection and local history continu
 while closed. All 60 activity workspace/console tests passed. Browser checks verified
 closed during loading, closed after completion, manual opening, and a fresh closed
 state after reloading an opened console.
+
+## Wikimedia EventStreams since — 16 November 2026
+
+Added default Live now / Since timestamp controls to the two activity screens, with
+UTC calendar/time inputs and an explicit Apply stream source action. Source selection
+is independent of saved playback. The collector builds the real upstream since URL,
+removes since for Live now, and uses the last successfully processed SSE event ID on
+reconnect. Invalid/future/naive timestamps are rejected before supervisor commands are
+queued. SSE error events and failed Kafka enqueue operations cannot advance that ID.
+Small atomic source/progress JSON files report real queued envelope bytes and event
+counts, source state, first/latest matching event timestamps, input filtering and Kafka
+delivery counters. The processing console remains manually opened and collapsed by
+default. Applying a source while running restarts only the collector, with rollback to
+the previous source on connection failure; Kafka, Spark and checkpoints are retained.
+
+Added persistent event-day → ingestion-day metadata. Stored date discovery, source
+pruning, article lookup and day reads now include historical events fetched into a
+later ingestion partition. Exact event-day filtering and deduplication remain intact.
+Existing current horizons and finalized anomaly pipelines retain their semantics;
+late historical arrivals do not imply recomputed finalized windows or scores.
+
+Verification: 98 tests passed in 23.137 seconds. New tests cover ISO timezone/epoch
+normalization, future/invalid timestamps, URL parameter replacement, resume precedence,
+failed-enqueue/SSE-error cursors, authenticating/serializing source commands, preserving
+processing workers, failure rollback, measured payload progress, UTC UI callbacks and
+reading a historical event from a later ingestion partition.
+
+Real integration used the UI to request 16 Nov 2026 16:38 UTC. The collector changed
+PID, while the dashboard and all five Spark worker PIDs stayed unchanged. Spark
+committed 326 rows from this capture run (231 distinct event IDs), confirming the raw
+path; repeated upstream events are deduplicated by the dashboard reader. Then a brief
+request for 1 Nov 2026 16:30 UTC received its first matching English edit from 9 Nov
+2026 13:50:21 UTC. This demonstrates upstream retention limits rather than complete
+15-day history. After returning to Live now, the stored 9 Nov UTC query read 299
+captured edits via the 16 Nov ingestion partition. No synthetic events were published
+for these checks. All seven services stayed running across both source switches.
+Raw observations are in `qa-upstream-since-observations.json`. The final local-server
+restart resets source selection to Live now; the capture-day mapping and saved events
+survive it. Responsive verification corrected time-input shrinking on narrow screens.
+
+## Requested delayed since date-switch test
+
+Applied 31 October 2026 10:00 UTC in the browser. Once its new collector connected at
+16:57:49 UTC, it ran for 172.954 seconds before the 4 November 2026 10:00 UTC source
+command was submitted at 17:00:42 UTC. A snapshot at 146 seconds showed 13,326 events /
+17,435,823 serialized bytes queued, with 13,317 deliveries confirmed. The 4 November
+run connected at 17:01:00 UTC with a fresh collector PID. Dashboard and all five Spark
+worker PIDs were unchanged. Its UI subsequently showed 2,470 events / 3.18 MB queued,
+with source date correctly updated to 4 November and the console still collapsed.
+Both requests received their first matching edit at 9 November 13:50:21 UTC, which
+confirms these requests did not deliver the full requested older periods.
+
+Found an old untracked live collector (PID 93796, parent PID 1), started at 19:58:36 IST,
+writing to this project's collector.log and the same Kafka topic. It mixed current
+live events with historical capture. Verified its cwd/output log, sent SIGINT and
+confirmed it exited; only the managed 4 November collector remained after the test.
+No application code was changed during this verification.
+
+A stored 9 November UTC read after switching returned 13,388 distinct matching edits
+from 20,582 rows, removing 7,194 duplicate rows. Earlier captures remained available;
+overlapping upstream fetches do not imply additional unique edits. Live cards retain
+their current 5-minute/1-hour/6-hour horizon: the Since form is an ingestion source
+control, not a historical chart-date filter.
+
+Unresolved UI finding: the global header says STALE / No recent Wikipedia events
+while the source status correctly reports connected and increasing historical event
+counts. Its wall-clock freshness check needs to distinguish catch-up from a stalled
+collector. A duplicate-collector guard would also prevent a future unmanaged live
+collector from mixing sources. Left 4 November selected and capture running, matching
+the requested final step. Detailed runtime observations are in
+`qa-since-date-switch-observations.json`.

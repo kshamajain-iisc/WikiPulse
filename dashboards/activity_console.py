@@ -160,6 +160,18 @@ class IngestionMonitor:
                 progress = read_json(self.runtime / "bronze.progress.json")
                 state = read_json(self.runtime / "local_supervisor.json")
                 lines.insert(0, f"Capture controller: {state.get('state', 'unavailable')}. Dashboard queries read saved event files.")
+                capture = read_json(self.runtime / "collector-source.progress.json")
+                if capture:
+                    lines.append(f"Wikipedia source: {capture.get('since') or 'Live now'} · {capture.get('state', 'unknown')} · "
+                                 f"{capture.get('queued_events', 0):,} events / {data_size(capture.get('queued_bytes'))} queued to Kafka "
+                                 f"this connection run · latest captured event: {capture.get('latest_event') or 'waiting'}. "
+                                 f"Reported at {capture.get('updated_at', 'unknown')}.")
+                    delivery = capture.get("delivery") or {}
+                    if delivery:
+                        lines.append(f"Wikipedia input: {delivery.get('received', 0):,} feed events inspected · "
+                                     f"{delivery.get('filtered', 0):,} outside mainspace English edits · "
+                                     f"{delivery.get('published', 0):,} Kafka deliveries confirmed · "
+                                     f"{delivery.get('failed', 0):,} delivery/enqueue failures this capture run.")
                 if progress:
                     rows = progress.get("numInputRows")
                     ms = (progress.get("durationMs") or {}).get("triggerExecution", progress.get("batchDuration"))

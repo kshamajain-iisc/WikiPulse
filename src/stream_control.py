@@ -26,12 +26,23 @@ def atomic_json(path, data):
     temporary.replace(path)
 
 
-def request_action(action, command_id, token=None, root=ROOT):
-    if action not in ("start", "stop") or not isinstance(command_id, str) or not 8 <= len(command_id) <= 80:
+def request_action(action, command_id, token=None, root=ROOT, source=None):
+    if action not in ("start", "stop", "source") or not isinstance(command_id, str) or not 8 <= len(command_id) <= 80:
         return {"ok": False, "message": "Invalid stream command."}
     expected = os.environ.get("WIKIPULSE_CONTROL_TOKEN", "")
     if not expected or not token or not secrets.compare_digest(expected, token):
         return {"ok": False, "message": "Start the managed stack with ./run-local.sh to enable stream controls."}
+    if action == "source":
+        from src.stream_source import normalize_since
+        try:
+            if not isinstance(source, dict) or source.get("mode") not in ("live", "since"):
+                raise ValueError("Choose Live now or Since timestamp.")
+            since = normalize_since(source.get("since")) if source["mode"] == "since" else None
+            if source["mode"] == "since" and not since:
+                raise ValueError("Choose a UTC timestamp before applying the source.")
+            source = {"mode": source["mode"], "since": since}
+        except ValueError as error:
+            return {"ok": False, "message": str(error)}
     runtime = Path(root) / "data/run"
     runtime.mkdir(parents=True, exist_ok=True)
     with (runtime / "stream-control.lock").open("a") as lock:
@@ -57,9 +68,11 @@ def request_action(action, command_id, token=None, root=ROOT):
             return {"ok": True, "id": command_id, "message": "Stream is already running."}
         if action == "stop" and state.get("state") == "idle":
             return {"ok": True, "id": command_id, "message": "Stream is already stopped; the dashboard remains available."}
-        atomic_json(pending, {"id": command_id, "action": action,
-                              "requested_at": datetime.now(timezone.utc).isoformat()})
-        return {"ok": True, "id": command_id, "message": f"Stream {action} accepted. Progress appears in the console."}
+        command = {"id": command_id, "action": action, "requested_at": datetime.now(timezone.utc).isoformat()}
+        if action == "source":
+            command["source"] = source
+        atomic_json(pending, command)
+        return {"ok": True, "id": command_id, "message": "Source change accepted. Active status updates below." if action == "source" else f"Stream {action} accepted. Progress appears in the console."}
 
 
 def committed_files(root):

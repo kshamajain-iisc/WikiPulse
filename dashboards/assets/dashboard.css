@@ -42,14 +42,14 @@ a:hover { text-decoration:underline; }
 .stream-actions { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
 .health-tag { display:inline-flex; align-items:center; min-height:38px; border:1px solid var(--line); border-radius:999px; padding:7px 13px; color:var(--muted); background:var(--surface-2); font-size:12px; font-weight:650; }
 .health-tag:before { content:""; width:8px; height:8px; border-radius:50%; margin-right:8px; background:#98a4b7; }
-.health-running { color:#155e75; background:#e3f7fb; border-color:#bce9f2; }
-.health-running:before { background:#06a6be; }
+.health-running,.health-catching_up { color:#155e75; background:#e3f7fb; border-color:#bce9f2; }
+.health-running:before,.health-catching_up:before { background:#06a6be; }
 .health-stale,.health-broken { color:#8a4b08; background:#fff4de; border-color:#f3d89b; }
 .health-stale:before,.health-broken:before { background:#ed9b26; }
 .health-offline { color:#9b2c4a; background:#fff0f3; border-color:#f4c7d2; }
 .health-offline:before { background:#d94b6a; }
-.health-restarting,.health-starting { color:#5544a5; background:#f1edff; border-color:#d5ccff; }
-.health-restarting:before,.health-starting:before { background:#7966e8; }
+.health-restarting,.health-starting,.health-reconnecting { color:#5544a5; background:#f1edff; border-color:#d5ccff; }
+.health-restarting:before,.health-starting:before,.health-reconnecting:before { background:#7966e8; }
 .restart-button { border:1px solid var(--accent); border-radius:9px; padding:10px 14px; background:var(--accent); color:#fff; font-family:inherit; font-size:13px; font-weight:650; cursor:pointer; }
 .restart-button:hover:not(:disabled) { filter:brightness(.94); }
 .restart-button:disabled { opacity:.48; cursor:not-allowed; }

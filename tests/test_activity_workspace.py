@@ -174,6 +174,19 @@ class ActivityReaderTests(unittest.TestCase):
         self.assertIn("Saved edit history", source)
         self.assertNotIn("Streamed edits", source)
 
+    def test_since_capture_is_discoverable_by_event_day_despite_later_ingestion(self):
+        self.write(self.paths.raw / "ingestion_date=2026-11-16", [{
+            "event_time": datetime(2026, 11, 1, 12), "event_id": "enwiki:123", "change_id": 123, "wiki": "enwiki",
+            "namespace": 0, "change_type": "edit", "page_id": 123, "page_title": "Backfilled article",
+            "is_bot": False, "old_length": 100, "new_length": 110}])
+        atomic_json(self.paths.runtime / "capture-days.json", {"2026-11-01": ["2026-11-16"]})
+        data, _ = self.read(zone="UTC")
+        self.assertEqual(data["metrics"]["edits"], 1)
+        self.assertEqual(data["rankings"][0]["title"], "Backfilled article")
+        self.assertIn("2026-11-01", [d["value"] for d in self.reader.catalog("UTC")])
+        article, _ = self.read(zone="UTC", page="investigation", title="Backfilled article")
+        self.assertEqual(article["metrics"]["edits"], 1)
+
     def test_all_live_horizons_use_event_time(self):
         self.reader.now = lambda: datetime(2026, 11, 1, 12, tzinfo=UTC).timestamp()
         rows = []
@@ -379,6 +392,24 @@ class ActivityControlTests(unittest.TestCase):
         self.assertEqual(result["pulse-date"]["date"], "2026-01-01")
         self.assertEqual(result["pulse-seed"]["data"]["cursor"], 42000)
         self.assertEqual(result["pulse-dates"]["data"], [])
+
+    def test_stream_source_defaults_live_and_restores_active_since_on_navigation(self):
+        result = self.invoke("pulse-source-start.value", "location.pathname").json["response"]
+        self.assertEqual(result["pulse-source-start"]["value"], "live")
+        atomic_json(self.paths.runtime / "stream-source.json", {"mode": "since", "since": "2026-11-01T12:34:56.000Z"})
+        result = self.invoke("pulse-source-start.value", "location.pathname").json["response"]
+        self.assertEqual(result["pulse-source-date"]["date"], "2026-11-01")
+        self.assertEqual(result["pulse-source-time"]["value"], "12:34:56")
+
+    def test_apply_source_queues_explicit_utc_timestamp_and_live_discards_timestamp(self):
+        self.values.update({"pulse-apply-source.n_clicks": 1, "pulse-source-start.value": "since",
+                            "pulse-source-date.date": "2026-11-01", "pulse-source-time.value": "12:34:56"})
+        with patch("dashboards.activity_ui.request_action", return_value={"message": "Accepted"}) as action:
+            self.invoke("pulse-source-command.children", "pulse-apply-source.n_clicks")
+            self.assertEqual(action.call_args.kwargs["source"], {"mode": "since", "since": "2026-11-01T12:34:56Z"})
+            self.values["pulse-source-start.value"] = "live"
+            self.invoke("pulse-source-command.children", "pulse-apply-source.n_clicks")
+            self.assertEqual(action.call_args.kwargs["source"]["mode"], "live")
 
     def test_calendar_steps_between_captured_dates_only(self):
         with patch.object(self.workspace.reader, "catalog", return_value=[{"value": "2026-10-28"}, {"value": "2026-11-05"}]):

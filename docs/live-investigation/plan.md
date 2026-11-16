@@ -56,3 +56,24 @@ callback path. Stored lake data, production topics and checkpoints are never res
     probing in a separate bounded worker. Verify append, restore, bounds, failure,
     cached-zero-work, plain labels, and browser refresh/navigation behavior. Rollback
     consists of removing the history/monitor wiring; event data is unaffected.
+
+15. [DONE] Authorized upstream since option: add default Live now / Since timestamp
+    with explicit UTC timestamp and Apply source on activity routes. Validate timestamp
+    server-side, switch only the collector through authenticated supervisor IPC,
+    preserve Kafka/Spark checkpoints and resume IDs on reconnect. Publish small atomic
+    collector status and event-day-to-ingestion-day metadata; include those partitions
+    in existing stored reads/catalog. Show requested versus observed capture position,
+    lag and counts; keep activity horizon semantics and explain use of Stored activity
+    for past dates. No retroactive anomaly/window recomputation. Test URL construction,
+    validation, reconnect precedence, source command serialization, date discovery,
+    reader partition mapping, UI callbacks and real short upstream catch-up; restore
+    default Live now after QA. Retain collapsed console and local history.
+
+16. [TODO] Fix the surfaced status/ownership issues: classify active historical
+    ingestion as catching_up from fresh collector + raw Spark progress, preserve
+    live/failed/stalled/reconnecting states, align console Start/Stop availability,
+    and style the new health state. Add a broker/topic-specific collector process
+    lock with clear duplicate rejection before producer creation. Verify healthy
+    catch-up, genuinely stalled inputs, stopped/broken precedence, transition to
+    recent live events, lock exclusion/release, and real UI status while Since is
+    active. Preserve the currently selected 4 November source after verification.
