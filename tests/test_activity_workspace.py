@@ -401,6 +401,16 @@ class ActivityControlTests(unittest.TestCase):
         self.assertEqual(result["pulse-source-date"]["date"], "2026-11-01")
         self.assertEqual(result["pulse-source-time"]["value"], "12:34:56")
 
+    def test_catch_up_health_keeps_start_disabled_and_stop_available(self):
+        health = {"state": "catching_up", "label": "CATCHING UP · Wikipedia history is arriving", "managed": True}
+        with patch("dashboards.activity_ui.stream_health", return_value=health), \
+                patch.object(self.workspace.ingestion, "snapshot", return_value=[]), \
+                patch.dict("os.environ", {"WIKIPULSE_CONTROL_TOKEN": "fixture"}):
+            response = self.invoke("pulse-stream-metrics.children", "health-refresh.n_intervals").json["response"]
+        self.assertTrue(response["pulse-start-stream"]["disabled"])
+        self.assertFalse(response["pulse-stop-stream"]["disabled"])
+        self.assertFalse(response["pulse-apply-source"]["disabled"])
+
     def test_apply_source_queues_explicit_utc_timestamp_and_live_discards_timestamp(self):
         self.values.update({"pulse-apply-source.n_clicks": 1, "pulse-source-start.value": "since",
                             "pulse-source-date.date": "2026-11-01", "pulse-source-time.value": "12:34:56"})

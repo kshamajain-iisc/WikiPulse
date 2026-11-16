@@ -356,3 +356,29 @@ collector. A duplicate-collector guard would also prevent a future unmanaged liv
 collector from mixing sources. Left 4 November selected and capture running, matching
 the requested final step. Detailed runtime observations are in
 `qa-since-date-switch-observations.json`.
+
+## Resolved catch-up status and duplicate collector issues
+
+Replaced historical event-time freshness with independent collector-activity and raw
+Spark-ingestion freshness. Connected captures with fresh activity and older events
+now show CATCHING UP; recent captured events show LIVE even if finalized windows are
+older. Missing/stale activity, stalled raw ingestion, reconnecting sources, failed
+workers and controller transitions remain distinct warnings/states. The first-event
+wait does not falsely claim history is arriving. Catch-up disables Start while keeping
+Stop available, and the console still initializes collapsed.
+
+Collector startup now takes a broker/topic-specific OS advisory lock before producer
+creation or progress-file writes. This prevents a second live collector from mixing
+with Since ingestion. The lock is released on shutdown or crash and retained safely
+as a small PID file, with no database. A real attempt to start a duplicate against
+the running managed collector exited with status 1 and the intended explanation,
+without changing the source or publishing events.
+
+112 tests passed in 23.307 seconds. Regression coverage includes catch-up/live/stalled
+classification, missing/invalid timestamps, reconnect/source mismatch, controller and
+broken-worker precedence, Start/Stop behavior, process-level lock exclusion, crash
+recovery and rejecting duplicate main before any producer is created. Direct-script
+collector --help also succeeds. Browser checks confirmed LIVE with recent events;
+a subsequent stream restart correctly retained RESTARTING precedence. Final Since
+verification restores 4 November 2026 10:00 UTC. Detailed final runtime observations
+are in `qa-catchup-health-fix-observations.json`.

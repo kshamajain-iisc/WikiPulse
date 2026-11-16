@@ -1,6 +1,10 @@
 """Wikimedia source selection and small local capture metadata (no database)."""
 
 import time
+import fcntl
+import hashlib
+import os
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
@@ -12,6 +16,29 @@ except ImportError:
 
 UTC = timezone.utc
 RUNTIME = Path(__file__).resolve().parents[1] / "data/run"
+
+
+@contextmanager
+def collector_lock(identity, runtime=RUNTIME):
+    """Keep one publisher per broker/topic; the OS releases ownership on exit."""
+    runtime = Path(runtime)
+    runtime.mkdir(parents=True, exist_ok=True)
+    key = hashlib.sha256(identity.encode()).hexdigest()[:16]
+    # Never unlink an advisory lock file: another process may hold its inode.
+    with (runtime / f"collector-{key}.lock").open("a+") as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as error:
+            raise SystemExit("Another WikiPulse collector already publishes to this broker/topic. "
+                             "Use Apply stream source in the managed dashboard to change its date.") from error
+        try:
+            lock.seek(0)
+            lock.truncate()
+            lock.write(str(os.getpid()))
+            lock.flush()
+            yield
+        finally:
+            fcntl.flock(lock, fcntl.LOCK_UN)
 
 
 def normalize_since(value, now=None):

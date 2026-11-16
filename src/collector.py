@@ -9,13 +9,13 @@ import requests
 from dotenv import load_dotenv
 
 try:
-    from .stream_source import CaptureProgress, normalize_since, stream_url
+    from .stream_source import CaptureProgress, collector_lock, normalize_since, stream_url
     from .kafka_common import (
         KAFKA_SERVERS, KAFKA_TOPIC, build_envelope, configure_logging,
         create_producer, get_event_id, is_valid_edit,
     )
 except ImportError:  # Support python src/collector.py as well as python -m.
-    from stream_source import CaptureProgress, normalize_since, stream_url
+    from stream_source import CaptureProgress, collector_lock, normalize_since, stream_url
     from kafka_common import (
         KAFKA_SERVERS, KAFKA_TOPIC, build_envelope, configure_logging,
         create_producer, get_event_id, is_valid_edit,
@@ -294,13 +294,12 @@ def main():
             "Set a real WIKIMEDIA_USER_AGENT in .env"
         )
 
-    producer = create_producer()
-
-    logger.info("Starting WikiPulse collector")
-    logger.info("Kafka: %s", KAFKA_SERVERS)
-    logger.info("Topic: %s", TOPIC)
-
-    stream_events(producer, since, CaptureProgress(since))
+    with collector_lock(f"{KAFKA_SERVERS}/{TOPIC}"):
+        producer = create_producer()
+        logger.info("Starting WikiPulse collector")
+        logger.info("Kafka: %s", KAFKA_SERVERS)
+        logger.info("Topic: %s", TOPIC)
+        stream_events(producer, since, CaptureProgress(since))
 
 
 if __name__ == "__main__":

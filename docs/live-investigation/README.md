@@ -182,3 +182,15 @@ Applying a source while running restarts only the collector, preserving Kafka,
 Spark workers and checkpoints. Existing finalized windows/anomaly scores are not
 retroactively rebuilt from late historical arrivals. Source changes and real capture
 counts appear in the processing console, which stays collapsed until opened.
+
+Historical source health now uses recent collector activity and raw Spark ingestion
+progress. Active older events show **CATCHING UP**, while recent events show **LIVE**;
+stale or missing collector/ingestion activity still warns, and reconnecting/failed
+workers remain distinct states. Finalized window event times do not determine the
+freshness of a historical capture. Catch-up keeps Start disabled and Stop available.
+The console continues collecting logs while collapsed.
+
+Collector startup also holds a small OS advisory lock per configured Kafka broker /
+topic. A second collector exits before creating its producer or changing progress
+metadata. Normal shutdown and process crashes release the lock; its small local PID
+file is retained safely and does not require a database.

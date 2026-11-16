@@ -48,7 +48,7 @@ def stream_health() -> dict:
         status = "broken"
 
     progress = _read_json(RUN_DIR / "windows-5m.progress.json")
-    event_time = progress.get("eventTime", {}).get("max")
+    event_time = (progress.get("eventTime") or {}).get("max")
     if not event_time:
         event_time = progress.get("timestamp")
     now = datetime.now(timezone.utc)
@@ -75,9 +75,11 @@ def stream_health() -> dict:
         else:
             event_time = capture.get("latest_event")
             event_age = _age_seconds(event_time, now)
-            if event_time and event_age is None:
+            if not event_time:
+                status = "reconnecting"
+            elif event_age is None:
                 status, stale_reason = "stale", "Wikipedia event time is unavailable"
-            elif event_age is None or event_age > 120:
+            elif event_age > 120:
                 status = "catching_up"
     elif status == "running" and event_time:
         age = _age_seconds(event_time, now)

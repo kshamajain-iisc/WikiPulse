@@ -69,7 +69,7 @@ callback path. Stored lake data, production topics and checkpoints are never res
     reader partition mapping, UI callbacks and real short upstream catch-up; restore
     default Live now after QA. Retain collapsed console and local history.
 
-16. [TODO] Fix the surfaced status/ownership issues: classify active historical
+16. [DONE] Fix the surfaced status/ownership issues: classify active historical
     ingestion as catching_up from fresh collector + raw Spark progress, preserve
     live/failed/stalled/reconnecting states, align console Start/Stop availability,
     and style the new health state. Add a broker/topic-specific collector process

@@ -1,6 +1,8 @@
 """Upstream timestamp selection, reconnect cursors and checkpoint-safe switching."""
 
 import json
+import subprocess
+import sys
 import tempfile
 import unittest
 from datetime import datetime, timezone
@@ -11,11 +13,42 @@ from urllib.parse import parse_qs, urlsplit
 import requests
 
 from src import collector, run_local
-from src.stream_source import CaptureProgress, normalize_since, stream_url
+from src.stream_source import CaptureProgress, collector_lock, normalize_since, stream_url
 from src.stream_control import atomic_json, read_json, request_action
 
 
 class SourceTests(unittest.TestCase):
+    def test_collector_lock_rejects_another_process_and_releases_after_exit(self):
+        code = "from src.stream_source import collector_lock; import sys\nwith collector_lock('broker/topic',sys.argv[1]): print('acquired')"
+        with tempfile.TemporaryDirectory() as root:
+            with collector_lock("broker/topic", root):
+                blocked = subprocess.run([sys.executable, "-c", code, root], text=True, capture_output=True, timeout=5)
+                self.assertNotEqual(blocked.returncode, 0)
+                self.assertIn("Another WikiPulse collector", blocked.stderr)
+                with collector_lock("broker/other-topic", root):
+                    pass
+            acquired = subprocess.run([sys.executable, "-c", code, root], text=True, capture_output=True, timeout=5)
+            self.assertEqual(acquired.returncode, 0, acquired.stderr)
+
+    def test_collector_lock_is_released_after_a_process_crash(self):
+        code = "from src.stream_source import collector_lock; import sys,os\nwith collector_lock('broker/topic',sys.argv[1]): os._exit(9)"
+        with tempfile.TemporaryDirectory() as root:
+            crashed = subprocess.run([sys.executable, "-c", code, root], capture_output=True, timeout=5)
+            self.assertEqual(crashed.returncode, 9)
+            with collector_lock("broker/topic", root):
+                pass
+
+    def test_duplicate_main_exits_before_creating_a_producer_or_overwriting_progress(self):
+        with tempfile.TemporaryDirectory() as root, collector_lock(f"{collector.KAFKA_SERVERS}/{collector.TOPIC}", root):
+            with patch.object(collector, "collector_lock", side_effect=lambda identity: collector_lock(identity, root)), \
+                    patch.object(collector, "create_producer") as producer, patch.object(collector, "stream_events") as stream, \
+                    patch.object(collector, "USER_AGENT", "WikiPulseTest/1.0"), patch("sys.argv", ["collector"]):
+                with self.assertRaisesRegex(SystemExit, "Another WikiPulse collector"):
+                    collector.main()
+                producer.assert_not_called()
+                stream.assert_not_called()
+                self.assertFalse((Path(root) / "collector-source.progress.json").exists())
+
     def test_timestamp_supports_offsets_and_epoch_milliseconds_but_not_future_or_naive(self):
         now = datetime(2026, 11, 16, tzinfo=timezone.utc).timestamp()
         self.assertEqual(normalize_since("2026-11-01T05:30:00+05:30", now), "2026-11-01T00:00:00.000Z")
