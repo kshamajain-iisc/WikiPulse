@@ -144,7 +144,7 @@ class DashboardDataService:
                 (alerts_5m or []) + (alerts_1h or []),
                 key=lambda r: (r.get("historical_score") or 0, r.get("spark_ml_score") or 0),
                 reverse=True,
-            )[:120]
+            )[:3000]
             for alert in alerts:
                 raw_ws = str(alert.get("window_start") or "")
                 alert["window_start_utc"] = raw_ws.replace("T", " ").replace("Z", " UTC") if raw_ws else "—"
@@ -171,7 +171,7 @@ class DashboardDataService:
             }
         if page == "geospatial_map":
             geo_mode = view if view in ("days", "windows_5m", "windows_1h") else "days"
-            geo_range = start or "55d"
+            geo_range = start or "62d"
             geo_region = title or "ALL"
             geo_data = {}
             if hasattr(self.queries, "geospatial_recentchanges"):

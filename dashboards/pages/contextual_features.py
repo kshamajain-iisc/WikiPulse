@@ -1,8 +1,9 @@
-"""Dedicated UI Page 3: Contextual Features (Topic Graph, Geospatial Subject Map, Revision Diffs & Lift Wing Revert Risk)."""
+"""Dedicated UI Page 3: Contextual Features (Topic Graph, Subject Geography, Revision Diffs & Lift Wing Revert Risk)."""
 
 from dash import html
 
 from dashboards import charts
+from dashboards import contextual_charts as ctx
 from dashboards.components import graph, heading, metric, notice, number, panel, pill_row, table
 
 
@@ -55,7 +56,7 @@ def render(data):
         heading(
             "ENRICH / HISTORICAL CONTEXTUAL FEATURES (INGEST_CURATE)",
             "Topic spillover, subject geography & Lift Wing Revert Risk.",
-            "Strictly historical curated enrichments from ingest_curate.py (2026-09-15 – 2026-11-08): investigate co-edited link/backlink spillover networks, MediaWiki revision diffs, subject location provenance, and Lift Wing ML Revert Risk calibration. For interactive regional RecentChanges exploration by [days / windows], open the Geospatial Map page.",
+            "Strictly historical curated enrichments from ingest_curate.py (2026-09-15 – 2026-11-15): investigate co-edited link/backlink spillover networks, MediaWiki revision diffs, subject location provenance, and Lift Wing ML Revert Risk calibration. For interactive regional RecentChanges exploration by [days / windows], open the Geospatial Map page.",
         ),
         html.Div([
             metric(
@@ -85,37 +86,73 @@ def render(data):
         html.Div([
             panel(
                 "Related-page & co-edit spillover network",
-                "Amber edges indicate linked neighbors co-edited in the same alert window",
-                graph(charts.relationship_graph(edges)),
+                "Alerted pages are hubs (sized by co-edited neighbours); amber neighbours were co-edited in the "
+                "same alert window and are sized by their in-window edits; blue bridges are linked from ≥2 alerts. "
+                "Hover any node for edit and editor counts.",
+                graph(ctx.spillover_hub_network(edges), show_modebar=True),
             ),
             panel(
-                "Global article-subject map",
-                "Wikipedia coordinates + Wikidata P625/P276/P17 (never editor IP geolocation)",
-                graph(charts.subject_map(points)),
+                "Spillover share by alerted page",
+                f"Co-edited vs link-only neighbours per hub ({len(edges)} of "
+                f"{g_enr.get('total_graph_edges', len(edges))} edges loaded); % = share of neighbours that "
+                "also changed during the alert",
+                graph(ctx.spillover_ratio_bars(edges)),
+            ),
+        ], className="chart-grid wide-left"),
+        html.Div([
+            panel(
+                "Precision–recall trade-off (Composite vs Lift Wing ML vs Heuristic)",
+                "Each point is a threshold τ (labelled); stars mark operating points; dotted arcs are iso-F1 "
+                "guides vs actual 48h reverts",
+                graph(ctx.revert_risk_pr_tradeoff(m6_risk)),
+            ),
+            panel(
+                "F1 by decision threshold",
+                "Stars mark each scorer's peak F1; hover shows precision, recall and false-positive rate at every τ",
+                graph(ctx.revert_risk_f1_by_threshold(m6_risk)),
             ),
         ], className="chart-grid"),
         html.Div([
             panel(
-                "Lift Wing Revert Risk threshold calibration (Precision, Recall & F1)",
-                "Empirical performance across thresholds τ ∈ {0.20, 0.35, 0.50, 0.65, 0.80, 0.90} vs actual 48h reverts",
-                graph(charts.revert_risk_calibration(curve)),
+                "Where reverted edits sit: Lift Wing ML vs heuristic risk",
+                "Each scored revision coloured by its actual 48h outcome (◆ = anonymous editor); the shaded area "
+                "is what the calibrated composite rule flags",
+                graph(ctx.revert_risk_separation(risks, m6_risk)),
             ),
             panel(
-                "Multi-model F1 comparison (Composite vs Lift Wing ML vs Heuristic)",
-                "Calibrated composite threshold τ=0.65 (F1=76.92%) vs standalone ML and heuristic rules",
-                graph(charts.revert_risk_multi_curve(m6_risk)),
+                "Confusion matrices at the operating points",
+                "Counts and row-normalised rates: how many real reverts are caught vs how many kept edits are "
+                "falsely flagged",
+                graph(ctx.revert_risk_confusion(m6_risk)),
+            ),
+        ], className="chart-grid"),
+        html.Div([
+            panel(
+                "Time-to-revert distribution",
+                (f"Cumulative share of reverts done within a given time (log scale); summary: median "
+                 f"{(mttr.get('overall') or {}).get('median_sec', '—')}s vs mean "
+                 f"{(mttr.get('overall') or {}).get('mean_sec', '—')}s — the mean is dominated by a slow tail")
+                if mttr else "Cumulative share of reverts done within a given time (log scale)",
+                graph(ctx.time_to_revert_ecdf(risks, mttr) if risks else charts.mttr_comparison(mttr)),
+            ),
+            panel(
+                "Revision diff profile",
+                "Lines added vs removed per compared revision (log–log); marker size = external links added, "
+                "✕ = compare not successful",
+                graph(ctx.revision_diff_profile(diffs)),
             ),
         ], className="chart-grid"),
         html.Div([
             panel(
                 "Top countries & regions by alerted topics",
-                "Subject geography aggregated from curated map_points",
-                graph(charts.geo_country_breakdown(countries)),
+                "Subject geography (never editor IP); bar colour = peak anomaly score, label = human edits",
+                graph(ctx.country_topic_bars(countries)),
             ),
             panel(
-                "Time-to-Revert (MTTR) breakdown (Median vs Mean)",
-                "Observed reversion latency across overall, human, and bot reverters",
-                graph(charts.mttr_comparison(mttr)),
+                "Subject location provenance & precision",
+                f"How {m6_geo.get('total_alert_subjects_evaluated', '—')} alerted subjects were located and how "
+                "precise each location is; unlocated subjects remain valid alerts",
+                graph(ctx.location_provenance_bars(loc_src, loc_qual)),
             ),
         ], className="chart-grid"),
         panel(

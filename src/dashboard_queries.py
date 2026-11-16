@@ -5,6 +5,7 @@ Presentation code receives aggregates and capped records, never raw dataframes.
 """
 
 import json
+import math
 import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -87,16 +88,18 @@ _COMPILED_GEO_GAZETTEER = [
 ]
 
 GEO_TIME_RANGES = {
-    "55d": ("2026-09-15", "2026-11-08", None, None, "All 55 Curated Days (2026-09-15 – 2026-11-08)"),
-    "30d": ("2026-10-10", "2026-11-08", None, None, "Last 30 Curated Days (2026-10-10 – 2026-11-08)"),
-    "15d": ("2026-10-25", "2026-11-08", None, None, "Last 15 Curated Days (2026-10-25 – 2026-11-08)"),
-    "8d": ("2026-11-01", "2026-11-08", None, None, "Evaluation 8 Days (2026-11-01 – 2026-11-08)"),
+    "62d": ("2026-09-15", "2026-11-15", None, None, "All 62 Curated Days (2026-09-15 – 2026-11-15)"),
+    "55d": ("2026-09-15", "2026-11-15", None, None, "All 62 Curated Days (2026-09-15 – 2026-11-15)"),
+    "30d": ("2026-10-17", "2026-11-15", None, None, "Last 30 Curated Days (2026-10-17 – 2026-11-15)"),
+    "15d": ("2026-11-01", "2026-11-15", None, None, "Evaluation 15 Days (2026-11-01 – 2026-11-15)"),
+    "8d": ("2026-11-08", "2026-11-15", None, None, "Last 8 Curated Days (2026-11-08 – 2026-11-15)"),
     "baseline_47d": ("2026-09-15", "2026-10-31", None, None, "Baseline 47 Days (2026-09-15 – 2026-10-31)"),
     "day_2026-11-04": ("2026-11-04", "2026-11-04", "2026-11-04T00:00:00Z", "2026-11-04T23:59:59Z", "Peak Activity Day · 2026-11-04 (24h)"),
-    "day_2026-11-08": ("2026-11-08", "2026-11-08", "2026-11-08T00:00:00Z", "2026-11-08T23:59:59Z", "Final Curated Day · 2026-11-08 (24h)"),
+    "day_2026-11-15": ("2026-11-15", "2026-11-15", "2026-11-15T00:00:00Z", "2026-11-15T23:59:59Z", "Final Curated Day · 2026-11-15 (24h)"),
+    "day_2026-11-08": ("2026-11-08", "2026-11-08", "2026-11-08T00:00:00Z", "2026-11-08T23:59:59Z", "Curated Day · 2026-11-08 (24h)"),
     "win_6h_peak": ("2026-11-04", "2026-11-04", "2026-11-04T12:00:00Z", "2026-11-04T18:00:00Z", "Peak 6-Hour Window · 2026-11-04 12:00–18:00 UTC"),
-    "win_6h_latest": ("2026-11-08", "2026-11-08", "2026-11-08T18:00:00Z", "2026-11-08T23:59:59Z", "Final 6-Hour Window · 2026-11-08 18:00–24:00 UTC"),
-    "win_1h_latest": ("2026-11-08", "2026-11-08", "2026-11-08T22:00:00Z", "2026-11-08T23:59:59Z", "Final Hour Window · 2026-11-08 22:00–24:00 UTC"),
+    "win_6h_latest": ("2026-11-15", "2026-11-15", "2026-11-15T18:00:00Z", "2026-11-15T23:59:59Z", "Final 6-Hour Window · 2026-11-15 18:00–24:00 UTC"),
+    "win_1h_latest": ("2026-11-15", "2026-11-15", "2026-11-15T22:00:00Z", "2026-11-15T23:59:59Z", "Final Hour Window · 2026-11-15 22:00–24:00 UTC"),
 }
 
 
@@ -273,11 +276,110 @@ class DashboardQueries:
                         r["revert_points"] = fc.get("consensus_or_dispute")
                         r["pageview_points"] = fc.get("pageview_corroboration")
                     rows.append(r)
+
+                # Augment 1h / full-horizon pool with curated surge alerts from rankings_daily
+                # across 2026-10-15 .. 2026-11-15 for dates not already covered by windowed curated/alerts.
+                if duration in (None, "1h", "6h"):
+                    covered_days = {str(r.get("window_start") or "")[:10] for r in rows if r.get("window_start")}
+                    rk_files = self._parquet_files("rankings_daily", prefer_curated_lake=True)
+                    if rk_files:
+                        rk_raw = pa_ds.dataset(rk_files, format="parquet").to_table().to_pylist()
+                        for item in rk_raw:
+                            rk = self._normalize_arrow_row(item)
+                            d_str = str(rk.get("day") or "")
+                            if not ("2026-10-15" <= d_str <= "2026-11-15") or d_str in covered_days:
+                                continue
+                            z_val = float(rk.get("daily_velocity_zscore") or 0.0)
+                            e_hum = int(rk.get("edits_human") or 0)
+                            n_ed = int(rk.get("distinct_human_editors") or 0)
+                            if z_val < 5.0 or e_hum < 15 or n_ed < 3:
+                                continue
+                            g_bytes = int(rk.get("gross_churn_bytes") or 0)
+                            n_bytes = int(rk.get("net_bytes") or 0)
+                            rw_bytes = int(rk.get("rewriting_bytes") or 0)
+                            revs = int(rk.get("reverts_count") or 0)
+                            rev_ratio = float(rk.get("revert_ratio") or 0.0)
+                            ed_surge = round(n_ed / max(0.35, float(rk.get("avg_daily_edits") or 1.0) * 0.25), 2)
+
+                            vel_pts = round(min(35.0, max(0.0, 11.0 * math.log1p(max(0.0, z_val)) + 1.1 * min(float(e_hum), 10.0))), 2)
+                            ed_pts = round(min(25.0, max(0.0, 4.5 * math.log1p(max(0.0, ed_surge)) + 2.5 * min(float(n_ed), 6.0))), 2)
+                            ch_pts = round(min(20.0, max(0.0, 1.6 * math.log1p(max(0.0, float(g_bytes))) + 2.5)), 2)
+                            if rev_ratio >= 0.30 and revs >= 2:
+                                cons_pts = round(min(10.0, 4.0 + revs * 1.5), 2)
+                                atype = "EDIT_WAR_CONTROVERSY"
+                            elif n_ed <= 3 and g_bytes >= 8000:
+                                cons_pts = 6.5
+                                atype = "MAJOR_REWRITE"
+                            elif float(rk.get("avg_daily_pageviews") or 0.0) >= 2500.0 and n_ed >= 4:
+                                cons_pts = 8.5
+                                atype = "CONFIRMED_NEWS"
+                            else:
+                                cons_pts = 8.5
+                                atype = "BREAKING_NEWS_CANDIDATE"
+                            pv_corrob = atype == "CONFIRMED_NEWS"
+                            pv_pts = 7.5 if pv_corrob else 0.0
+                            h_score = round(min(100.0, vel_pts + ed_pts + ch_pts + cons_pts + pv_pts), 2)
+                            if h_score < 65.0:
+                                continue
+                            ml_score = round(min(100.0, h_score * 0.96), 2)
+                            det_a = e_hum >= 15 and n_ed >= 4
+                            aid = f"alt_oct_{rk.get('pageid')}_{d_str}"
+                            if aid in seen_ids:
+                                continue
+                            seen_ids.add(aid)
+                            fc_map = {
+                                "edit_velocity": vel_pts,
+                                "editor_diversity": ed_pts,
+                                "byte_churn": ch_pts,
+                                "consensus_or_dispute": cons_pts,
+                                "pageview_corroboration": pv_pts,
+                            }
+                            reasons = [
+                                f"Edit velocity surge: {e_hum} human edits on {d_str} (z-score +{z_val:.1f} vs page baseline)",
+                                f"Contributor arrival: {n_ed} distinct human editors active ({ed_surge:.1f}x baseline diversity)",
+                                f"Content churn: {g_bytes:,} gross bytes moved (net {n_bytes:+,} B, rewriting {rw_bytes:,} B)",
+                                (
+                                    f"Edit dispute / reversion signal: {revs} reverted edits ({rev_ratio * 100:.1f}% revert ratio)"
+                                    if revs > 0
+                                    else f"Constructive consensus: 0 reverts across {e_hum} human edits (100% retention)"
+                                ),
+                            ]
+                            rows.append({
+                                "alert_id": aid,
+                                "pageid": rk.get("pageid"),
+                                "title": rk.get("title"),
+                                "window_start": f"{d_str}T12:00:00Z",
+                                "window_duration": "1h",
+                                "alert_type": atype,
+                                "historical_score": h_score,
+                                "spark_ml_score": ml_score,
+                                "fixed_threshold_flag": det_a,
+                                "historical_alert_flag": True,
+                                "spark_ml_alert_flag": ml_score >= 68.0,
+                                "pageview_corroborated": pv_corrob,
+                                "edits_human": e_hum,
+                                "distinct_human_editors": n_ed,
+                                "gross_bytes": g_bytes,
+                                "net_bytes": n_bytes,
+                                "rewriting_bytes": rw_bytes,
+                                "reverts_count": revs,
+                                "revert_ratio": rev_ratio,
+                                "velocity_zscore": round(z_val, 2),
+                                "editor_surge_ratio": ed_surge,
+                                "feature_contributions": fc_map,
+                                "activity_points": vel_pts,
+                                "editor_points": ed_pts,
+                                "content_points": ch_pts,
+                                "revert_points": cons_pts,
+                                "pageview_points": pv_pts,
+                                "reasons": reasons,
+                            })
+
                 rows.sort(
                     key=lambda r: (float(r.get("historical_score") or 0.0), str(r.get("window_start") or "")),
                     reverse=True,
                 )
-                return rows[:200]
+                return rows[:3000]
         frame = self.historical_table("alerts")
         if frame is None:
             return []
@@ -295,7 +397,7 @@ class DashboardQueries:
                 .withColumn("revert_points", F.col("feature_contributions")["consensus_or_dispute"])
                 .withColumn("pageview_points", F.col("feature_contributions")["pageview_corroboration"])
             )
-        return records(frame.dropDuplicates(["alert_id"]).orderBy(F.desc("historical_score"), F.desc("window_start")), 200)
+        return records(frame.dropDuplicates(["alert_id"]).orderBy(F.desc("historical_score"), F.desc("window_start")), 2000)
 
     def table_available(self, name: str) -> bool:
         """Check for a populated table without asking Spark to scan its contents."""
@@ -728,11 +830,11 @@ class DashboardQueries:
         }
 
     def geospatial_recentchanges(
-        self, mode: str = "days", time_range: str = "55d", region: str = "ALL"
+        self, mode: str = "days", time_range: str = "62d", region: str = "ALL"
     ) -> dict:
         """Aggregate regional RecentChanges edits across selected days or windows (`ingest_curate`)."""
         mode_norm = mode if mode in ("days", "windows_5m", "windows_1h") else "days"
-        range_key = time_range if time_range in GEO_TIME_RANGES else "55d"
+        range_key = time_range if time_range in GEO_TIME_RANGES else "62d"
         day_start, day_end, ts_start, ts_end, range_label = GEO_TIME_RANGES[range_key]
         selected_region = (region or "ALL").strip()
         available_regions = ["ALL"] + sorted(set(COUNTRY_TO_MACRO.values())) + [

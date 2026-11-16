@@ -14,13 +14,16 @@ from dashboards.charts import (
     baseline_comparison,
     baseline_tier_distribution,
     churn_rankings,
+    detector_b_vs_c_correlation_chart,
     detector_comparison,
     false_alert_comparison_chart,
     geo_country_breakdown,
     historical_alerts_timeline,
+    kmeans_centroid_heatmap,
     kmeans_clusters,
     m4_engine_and_latency,
     macro_region_distribution,
+    ml_threshold_calibration_chart,
     mttr_comparison,
     recentchanges_regional_map,
     regional_edits_breakdown,
@@ -30,6 +33,7 @@ from dashboards.charts import (
     revert_risk_multi_curve,
     rf_feature_importances,
     score_component_breakdown,
+    single_alert_explainability_chart,
     subject_map,
     synthetic_patterns_chart,
 )
@@ -202,6 +206,25 @@ class DashboardPresentationTests(unittest.TestCase):
         self.assertEqual(len(regional_edits_breakdown([{"country_or_region": "India", "total_edits": 800, "human_edits": 700, "bot_edits": 100}]).data), 2)
         self.assertEqual(len(regional_edits_timeline([{"bucket": "2026-11-04", "edits": 500, "human": 450, "bots": 50, "reverts": 12}], mode="days").data), 3)
         self.assertEqual(len(macro_region_distribution([{"macro_region": "Europe", "total_edits": 900, "active_articles": 45}]).data), 2)
+        self.assertEqual(len(single_alert_explainability_chart({
+            "title": "Navi Pillay", "historical_score": 98.5, "spark_ml_score": 95.4,
+            "feature_contributions": {"edit_velocity": 35.0, "editor_diversity": 25.0, "byte_churn": 20.0, "consensus_or_dispute": 8.5, "pageview_corroboration": 10.0},
+        }, threshold=65.0).data), 2)
+        self.assertEqual(len(kmeans_centroid_heatmap([{
+            "cluster_id": 0, "archetype": "Normal Quiet Baseline",
+            "standardized_centroid": {"f_edits_human": -0.5, "f_distinct_editors": -0.3},
+        }]).data), 1)
+        self.assertEqual(len(ml_threshold_calibration_chart({
+            "detector_b_curve": [{"threshold": 65, "precision_pct": 91.1, "recall_pct": 99.7, "f1_pct": 95.2}],
+            "detector_c_curve": [{"threshold": 68, "precision_pct": 96.5, "recall_pct": 89.2, "f1_pct": 92.7}],
+        }).data), 6)
+        self.assertGreaterEqual(len(detector_b_vs_c_correlation_chart({
+            "scatter_points": [{"title": "Navi Pillay", "historical_score": 98.5, "spark_ml_score": 95.4, "agreement_cohort": "All-3 Consensus (A ∩ B ∩ C)"}],
+        }).data), 2)
+        self.assertEqual(len(synthetic_patterns_chart([{
+            "pattern_title": "SYNTH_BREAKING_NEWS_SURGE", "historical_score": 96.3, "spark_ml_score": 94.8,
+            "detector_a_fixed_flag": True, "expected_positive": True,
+        }]).data), 3)
 
     def test_table_formats_booleans_and_accessibility_attrs(self):
         region = table([{"title": "Alpha", "flag": True, "count": 12}], [("Title", "title"), ("Flag", "flag"), ("Count", "count")], aria_label="Test table")
@@ -388,6 +411,65 @@ class DashboardPresentationTests(unittest.TestCase):
         })
         self.assertEqual(resp_map.status_code, 200)
         self.assertEqual(resp_map.json["response"]["geo-region"]["value"], "India")
+
+        # Verify interactive anomaly scoring callback (6h/1d/1w window, shift class, threshold, and scatter click inspector)
+        self.service.load.return_value["alerts"] = [
+            {
+                "alert_id": "alt_1",
+                "title": "Navi Pillay",
+                "window_start": "2026-11-08T22:00:00Z",
+                "window_start_ist": "09 Nov 2026, 03:30 IST",
+                "window_duration": "1h",
+                "alert_type": "CONFIRMED_NEWS",
+                "historical_score": 98.5,
+                "spark_ml_score": 95.4,
+                "fixed_threshold_flag": True,
+                "pageview_corroborated": True,
+                "edits_human": 34,
+                "distinct_human_editors": 24,
+                "revert_ratio": 0.0,
+                "velocity_zscore": 226.6,
+                "feature_contributions": {"edit_velocity": 35.0, "editor_diversity": 25.0, "byte_churn": 20.0, "consensus_or_dispute": 8.5, "pageview_corroboration": 10.0},
+                "reasons": ["Edit velocity surge", "Contributor arrival"],
+            },
+            {
+                "alert_id": "alt_2",
+                "title": "2026 New York City mayoral election",
+                "window_start": "2026-11-08T23:00:00Z",
+                "window_start_ist": "09 Nov 2026, 04:30 IST",
+                "window_duration": "5m",
+                "alert_type": "EDIT_WAR_CONTROVERSY",
+                "historical_score": 88.0,
+                "spark_ml_score": 85.0,
+                "fixed_threshold_flag": True,
+                "pageview_corroborated": False,
+                "edits_human": 18,
+                "distinct_human_editors": 7,
+                "revert_ratio": 0.44,
+                "velocity_zscore": 95.0,
+                "feature_contributions": {"edit_velocity": 32.0, "editor_diversity": 22.0, "byte_churn": 20.0, "consensus_or_dispute": 10.0, "pageview_corroboration": 4.0},
+                "reasons": ["Edit velocity surge", "Edit dispute / reversion signal"],
+            },
+        ]
+        anom_key = next(k for k in create_app(self.service).callback_map if "anomaly-scoring-content.children" in k)
+        resp_anom = client.post("/_dash-update-component", json={
+            "output": anom_key,
+            "outputs": [
+                {"id": "anomaly-scoring-content", "property": "children"},
+                {"id": "anom-alert-select", "property": "options"},
+                {"id": "anom-alert-select", "property": "value"},
+            ],
+            "inputs": [
+                {"id": "anom-window", "property": "value", "value": "6h"},
+                {"id": "anom-shift-class", "property": "value", "value": "ALL"},
+                {"id": "anom-threshold", "property": "value", "value": 75},
+                {"id": "anom-alert-select", "property": "value", "value": "alt_1"},
+                {"id": "anom-scatter-graph", "property": "clickData", "value": {"points": [{"customdata": "alt_2"}]}},
+            ],
+            "state": [], "changedPropIds": ["anom-scatter-graph.clickData"],
+        })
+        self.assertEqual(resp_anom.status_code, 200)
+        self.assertEqual(resp_anom.json["response"]["anom-alert-select"]["value"], "alt_2")
 
 
 if __name__ == "__main__":

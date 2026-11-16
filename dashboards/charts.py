@@ -390,10 +390,54 @@ def rf_feature_importances(importances):
     return style(figure, 320)
 
 
-def kmeans_clusters(cluster_sizes, normal_cluster_id=None):
-    """Bar chart of KMeans (k=8) window cluster distribution learned by Spark ML."""
-    if not cluster_sizes:
+def kmeans_clusters(cluster_sizes, normal_cluster_id=None, cluster_profiles=None):
+    """Bar chart of KMeans (k=6) window cluster distribution and centroid distances learned by Spark ML."""
+    if not cluster_sizes and not cluster_profiles:
         return empty("KMeans cluster distribution appears after running Milestone 5 Spark ML")
+    if cluster_profiles:
+        labels = [
+            f"#{p.get('cluster_id')} {p.get('archetype', '')[:22]}"
+            for p in cluster_profiles
+        ]
+        counts = [int(p.get("window_count") or 0) for p in cluster_profiles]
+        dists = [float(p.get("centroid_distance_from_normal") or 0.0) for p in cluster_profiles]
+        colors = [
+            BLUE if str(p.get("cluster_id")) == str(normal_cluster_id)
+            else CORAL if float(p.get("centroid_distance_from_normal") or 0.0) >= 3.5
+            else GREEN
+            for p in cluster_profiles
+        ]
+        figure = go.Figure()
+        figure.add_trace(go.Bar(
+            x=labels,
+            y=counts,
+            name="Window count",
+            marker_color=colors,
+            customdata=[
+                f"#{p.get('cluster_id')} {p.get('archetype')}<br>"
+                f"Share: {p.get('share_pct', 0):.2f}% · Centroid dist: {p.get('centroid_distance_from_normal', 0):.3f}<br>"
+                f"Avg human edits: {p.get('avg_edits_human', 0):.2f} · Avg editors: {p.get('avg_distinct_editors', 0):.2f}<br>"
+                f"Avg revert ratio: {float(p.get('avg_revert_ratio', 0)) * 100:.1f}% · Avg bot share: {float(p.get('avg_bot_share', 0)) * 100:.1f}%"
+                for p in cluster_profiles
+            ],
+            hovertemplate="%{customdata}<br>Windows: %{y:,}<extra></extra>",
+        ))
+        figure.add_trace(go.Scatter(
+            x=labels,
+            y=dists,
+            yaxis="y2",
+            name="Centroid distance from normal",
+            mode="lines+markers",
+            line=dict(color=AMBER, width=2.5),
+            marker=dict(size=8, color=AMBER),
+            hovertemplate="%{x}<br>Centroid distance: %{y:.3f}<extra></extra>",
+        ))
+        figure.update_layout(
+            yaxis=dict(title="Page windows"),
+            yaxis2=dict(title="Centroid distance (L2)", overlaying="y", side="right", showgrid=False),
+        )
+        return style(figure, 340)
+
     items = sorted(cluster_sizes.items(), key=lambda kv: int(kv[0]))
     labels = [
         f"Cluster {cid} (baseline)" if str(cid) == str(normal_cluster_id) else f"Cluster {cid}"
@@ -409,6 +453,42 @@ def kmeans_clusters(cluster_sizes, normal_cluster_id=None):
     ))
     figure.update_yaxes(title_text="Page windows")
     return style(figure, 320)
+
+
+def kmeans_centroid_heatmap(cluster_profiles):
+    """Heatmap of standardized 8D centroid feature coordinates across the KMeans behavioral clusters."""
+    if not cluster_profiles:
+        return empty("KMeans centroid feature profiles appear after running Milestone 5 Spark ML")
+    feat_keys = [
+        ("f_edits_human", "Human Edits"),
+        ("f_distinct_editors", "Distinct Editors"),
+        ("f_log_gross_bytes", "Gross Bytes"),
+        ("f_log_rewriting_bytes", "Rewriting Bytes"),
+        ("f_revert_ratio", "Revert Ratio"),
+        ("f_bot_share", "Bot Share"),
+        ("f_velocity_z", "Velocity Z"),
+        ("f_editor_surge", "Editor Surge"),
+    ]
+    y_labels = [f"#{p.get('cluster_id')} {p.get('archetype', '')}" for p in cluster_profiles]
+    x_labels = [label for _, label in feat_keys]
+    z_matrix = [
+        [float((p.get("standardized_centroid") or {}).get(k, 0.0)) for k, _ in feat_keys]
+        for p in cluster_profiles
+    ]
+    figure = go.Figure(go.Heatmap(
+        z=z_matrix,
+        x=x_labels,
+        y=y_labels,
+        colorscale=[[0.0, "#1e3a8a"], [0.35, "#eff6ff"], [0.65, "#fde68a"], [1.0, "#b91c1c"]],
+        zmin=-2.0,
+        zmax=3.0,
+        text=[[f"{val:+.2f}σ" for val in row] for row in z_matrix],
+        texttemplate="%{text}",
+        hovertemplate="Cluster: %{y}<br>Feature: %{x}<br>Centroid coordinate: %{z:+.3f}σ<extra></extra>",
+        colorbar=dict(title="Std (σ)", thickness=12),
+    ))
+    figure.update_yaxes(automargin=True)
+    return style(figure, 340)
 
 
 def geo_country_breakdown(countries):
@@ -478,11 +558,11 @@ def score_component_breakdown(alerts):
     return style(figure, 340)
 
 
-def anomaly_scatter(alerts):
-    """Velocity Z-Score vs Historical Score scatter across detected alerts."""
+def anomaly_scatter(alerts, threshold=65.0, selected_alert_id=None):
+    """Velocity Z-Score vs Historical Score scatter across detected alerts (click to inspect)."""
     if not alerts:
         return empty("Anomaly score distribution appears when alerts are available")
-    valid = [r for r in alerts if r.get("velocity_zscore") is not None and r.get("historical_score") is not None][:80]
+    valid = [r for r in alerts if r.get("velocity_zscore") is not None and r.get("historical_score") is not None][:120]
     if not valid:
         return empty("No velocity z-score and historical score pairs available")
     figure = go.Figure()
@@ -505,15 +585,98 @@ def anomaly_scatter(alerts):
             marker=dict(
                 size=[min(22, max(8, int(r.get("distinct_human_editors") or 3) + 5)) for r in rows],
                 color=color_map.get(atype, GREEN),
-                opacity=0.82,
+                opacity=0.84,
+                line=dict(color="#ffffff", width=1.0),
             ),
-            customdata=[r.get("title", "") for r in rows],
-            hovertemplate="%{customdata}<br>Velocity z: %{x:.1f}<br>Historical score: %{y:.1f}<extra></extra>",
+            text=[r.get("title", "") for r in rows],
+            customdata=[r.get("alert_id") or r.get("title", "") for r in rows],
+            hovertemplate="<b>%{text}</b><br>Velocity z: %{x:.1f}<br>Historical score: %{y:.1f}<br><i>Click to inspect alert</i><extra></extra>",
         ))
+    if selected_alert_id:
+        sel = [r for r in valid if (r.get("alert_id") == selected_alert_id or r.get("title") == selected_alert_id)][:1]
+        if sel:
+            r0 = sel[0]
+            figure.add_trace(go.Scatter(
+                x=[min(300.0, float(r0.get("velocity_zscore") or 0))],
+                y=[float(r0.get("historical_score") or 0)],
+                mode="markers",
+                name="Inspected Alert",
+                marker=dict(size=22, color="rgba(0,0,0,0)", line=dict(color=CORAL, width=3.2)),
+                text=[r0.get("title", "")],
+                customdata=[r0.get("alert_id") or r0.get("title", "")],
+                hovertemplate="<b>Inspected: %{text}</b><br>Velocity z: %{x:.1f}<br>Score: %{y:.1f}<extra></extra>",
+            ))
+    if threshold is not None:
+        figure.add_hline(
+            y=float(threshold),
+            line_dash="dash",
+            line_color=CORAL,
+            annotation_text=f"Min Score Threshold ({float(threshold):.0f})",
+            annotation_position="bottom right",
+        )
     figure.update_layout(hovermode="closest")
     figure.update_xaxes(title_text="Velocity Z-Score (capped at 300)")
-    figure.update_yaxes(title_text="Historical Score (0–100)")
+    figure.update_yaxes(title_text="Historical Score (0–100)", range=[45, 105])
     return style(figure, 340)
+
+
+def single_alert_explainability_chart(alert_row, threshold=65.0):
+    """Bullet / waterfall comparison of a single alert's 5 additive score components vs caps and overall scores."""
+    if not alert_row:
+        return empty("Select or click an alert to inspect its 100-point score decomposition")
+    fc = alert_row.get("feature_contributions") or {}
+    vel = float(fc.get("edit_velocity", alert_row.get("activity_points") or 0.0))
+    ed = float(fc.get("editor_diversity", alert_row.get("editor_points") or 0.0))
+    ch = float(fc.get("byte_churn", alert_row.get("content_points") or 0.0))
+    cons = float(fc.get("consensus_or_dispute", alert_row.get("revert_points") or 0.0))
+    pv = float(fc.get("pageview_corroboration", alert_row.get("pageview_points") or 0.0))
+    hist_score = float(alert_row.get("historical_score") or (vel + ed + ch + cons + pv))
+    ml_score = float(alert_row.get("spark_ml_score") or 0.0)
+
+    categories = [
+        "Pageview Corrob. (/10)",
+        "Consensus / Dispute (/10)",
+        "Byte Churn (/20)",
+        "Editor Diversity (/25)",
+        "Edit Velocity (/35)",
+        "Spark ML Score (/100)",
+        "Historical Score (/100)",
+    ]
+    caps = [10.0, 10.0, 20.0, 25.0, 35.0, 100.0, 100.0]
+    earned = [pv, cons, ch, ed, vel, ml_score, hist_score]
+    colors = ["#06a6be", INK, AMBER, BLUE, GREEN, "#8b5cf6", CORAL if hist_score >= float(threshold or 65.0) else AMBER]
+
+    figure = go.Figure()
+    figure.add_trace(go.Bar(
+        y=categories,
+        x=caps,
+        orientation="h",
+        name="Max Possible Cap",
+        marker_color="rgba(160, 175, 200, 0.25)",
+        hovertemplate="%{y}<br>Max cap: %{x:.1f} pts<extra></extra>",
+    ))
+    figure.add_trace(go.Bar(
+        y=categories,
+        x=earned,
+        orientation="h",
+        name="Earned Points / Score",
+        marker_color=colors,
+        text=[f"{v:.1f} / {c:.0f}" for v, c in zip(earned, caps)],
+        textposition="auto",
+        hovertemplate="%{y}<br>Earned: %{x:.2f} pts<extra></extra>",
+    ))
+    if threshold is not None:
+        figure.add_vline(
+            x=float(threshold),
+            line_dash="dash",
+            line_color=CORAL,
+            annotation_text=f"Threshold ({float(threshold):.0f})",
+            annotation_position="top",
+        )
+    figure.update_layout(barmode="overlay")
+    figure.update_xaxes(title_text="Points / Score (0–100 scale)", range=[0, 108])
+    figure.update_yaxes(automargin=True)
+    return style(figure, 320)
 
 
 def false_alert_comparison_chart(full_comp, sample_comp=None):
@@ -555,22 +718,204 @@ def false_alert_comparison_chart(full_comp, sample_comp=None):
 
 
 def synthetic_patterns_chart(pattern_details):
-    """Bar chart of synthetic knowledge-shift patterns (5 positive + 2 negative controls) vs alert threshold."""
+    """Bar chart of synthetic knowledge-shift patterns (5 positive + 2 negative controls) across Detectors A, B, and C."""
     if not pattern_details:
         return empty("Synthetic pattern injection results appear after running evaluate_alerts.py")
-    labels = [r.get("pattern_title", "").replace("SYNTH_", "").replace("CTRL_", "CTRL: ").replace("_", " ").title()
-              for r in pattern_details]
-    scores = [r.get("historical_score", 0) for r in pattern_details]
-    colors = [GREEN if r.get("expected_positive") else AMBER for r in pattern_details]
-    figure = go.Figure(go.Bar(
-        x=scores[::-1], y=labels[::-1], orientation="h",
-        marker_color=colors[::-1],
-        hovertemplate="%{y}: %{x:.1f} pts<extra></extra>",
+    labels = [
+        r.get("pattern_title", "").replace("SYNTH_", "").replace("CTRL_", "CTRL: ").replace("_", " ").title()
+        for r in pattern_details
+    ]
+    scores_b = [float(r.get("historical_score") or 0.0) for r in pattern_details]
+    has_ml = any("spark_ml_score" in r for r in pattern_details)
+    if not has_ml:
+        colors = [GREEN if r.get("expected_positive") else AMBER for r in pattern_details]
+        figure = go.Figure(go.Bar(
+            x=scores_b[::-1], y=labels[::-1], orientation="h",
+            marker_color=colors[::-1],
+            hovertemplate="%{y}: %{x:.1f} pts<extra></extra>",
+        ))
+        figure.add_vline(x=65.0, line_dash="dash", line_color="#d94b6a", annotation_text="Alert threshold (65)")
+        figure.update_xaxes(title_text="Historical Score (0–100)", range=[0, 105])
+        figure.update_yaxes(automargin=True)
+        return style(figure, 320)
+
+    scores_c = [float(r.get("spark_ml_score") or 0.0) for r in pattern_details]
+    scores_a = [75.0 if r.get("detector_a_fixed_flag") else 8.0 for r in pattern_details]
+    figure = go.Figure()
+    figure.add_trace(go.Bar(
+        x=scores_b[::-1],
+        y=labels[::-1],
+        orientation="h",
+        name="Detector B: Historical Score (/100)",
+        marker_color=GREEN,
+        hovertemplate="%{y}<br>Detector B (Historical): %{x:.1f} / 100<extra></extra>",
     ))
-    figure.add_vline(x=65.0, line_dash="dash", line_color="#d94b6a", annotation_text="Alert threshold (65)")
-    figure.update_xaxes(title_text="Historical Score (0–100)", range=[0, 105])
+    figure.add_trace(go.Bar(
+        x=scores_c[::-1],
+        y=labels[::-1],
+        orientation="h",
+        name="Detector C: Spark ML Score (/100)",
+        marker_color=BLUE,
+        hovertemplate="%{y}<br>Detector C (Spark ML): %{x:.1f} / 100<extra></extra>",
+    ))
+    figure.add_trace(go.Scatter(
+        x=scores_a[::-1],
+        y=labels[::-1],
+        mode="markers",
+        name="Detector A: Fixed Rule (Flagged vs Suppressed)",
+        marker=dict(
+            size=11,
+            symbol=["diamond" if r.get("detector_a_fixed_flag") else "x" for r in pattern_details[::-1]],
+            color=[CORAL if r.get("detector_a_fixed_flag") else INK for r in pattern_details[::-1]],
+            line=dict(color="#ffffff", width=1),
+        ),
+        customdata=["FLAGGED" if r.get("detector_a_fixed_flag") else "SUPPRESSED" for r in pattern_details[::-1]],
+        hovertemplate="%{y}<br>Detector A (Fixed Rule): %{customdata}<extra></extra>",
+    ))
+    figure.add_vline(x=65.0, line_dash="dash", line_color=CORAL, annotation_text="Hist Threshold (65)")
+    figure.add_vline(x=68.0, line_dash="dot", line_color=BLUE, annotation_text="ML Threshold (68)", annotation_position="bottom right")
+    figure.update_layout(barmode="group")
+    figure.update_xaxes(title_text="Detector Score (0–100) & Fixed Rule Verdict", range=[0, 108])
     figure.update_yaxes(automargin=True)
-    return style(figure, 320)
+    return style(figure, 360)
+
+
+def ml_threshold_calibration_chart(calib_data, detector_focus="both"):
+    """Precision, Recall, F1, and False-Alert Tradeoff Curve across score thresholds (50..95) for Detectors A, B, and C."""
+    if not calib_data:
+        return empty("Threshold calibration curves appear after running evaluate_alerts.py")
+    b_curve = calib_data.get("detector_b_curve", [])
+    c_curve = calib_data.get("detector_c_curve", [])
+    a_ref = calib_data.get("detector_a_reference", {})
+    if not b_curve and not c_curve:
+        return empty("No threshold calibration points available")
+
+    figure = go.Figure()
+    if detector_focus in ("both", "detector_b") and b_curve:
+        x_b = [r["threshold"] for r in b_curve]
+        figure.add_trace(go.Scatter(
+            x=x_b, y=[r["precision_pct"] for r in b_curve],
+            mode="lines+markers", name="Det B Precision (%)",
+            line=dict(color=GREEN, width=2.6),
+            hovertemplate="Threshold %{x}<br>Det B Precision: %{y:.2f}%<extra></extra>",
+        ))
+        figure.add_trace(go.Scatter(
+            x=x_b, y=[r["recall_pct"] for r in b_curve],
+            mode="lines+markers", name="Det B Recall (%)",
+            line=dict(color=GREEN, width=2.0, dash="dot"),
+            hovertemplate="Threshold %{x}<br>Det B Recall: %{y:.2f}%<extra></extra>",
+        ))
+        figure.add_trace(go.Scatter(
+            x=x_b, y=[r["f1_pct"] for r in b_curve],
+            mode="lines+markers", name="Det B F1-Score (%)",
+            line=dict(color="#059669", width=3.0),
+            hovertemplate="Threshold %{x}<br>Det B F1: %{y:.2f}%<extra></extra>",
+        ))
+
+    if detector_focus in ("both", "detector_c") and c_curve:
+        x_c = [r["threshold"] for r in c_curve]
+        figure.add_trace(go.Scatter(
+            x=x_c, y=[r["precision_pct"] for r in c_curve],
+            mode="lines+markers", name="Det C (Spark ML) Precision (%)",
+            line=dict(color=BLUE, width=2.6),
+            hovertemplate="Threshold %{x}<br>Det C Precision: %{y:.2f}%<extra></extra>",
+        ))
+        figure.add_trace(go.Scatter(
+            x=x_c, y=[r["recall_pct"] for r in c_curve],
+            mode="lines+markers", name="Det C (Spark ML) Recall (%)",
+            line=dict(color=BLUE, width=2.0, dash="dot"),
+            hovertemplate="Threshold %{x}<br>Det C Recall: %{y:.2f}%<extra></extra>",
+        ))
+        figure.add_trace(go.Scatter(
+            x=x_c, y=[r["f1_pct"] for r in c_curve],
+            mode="lines+markers", name="Det C (Spark ML) F1-Score (%)",
+            line=dict(color="#7c3aed", width=3.0),
+            hovertemplate="Threshold %{x}<br>Det C F1: %{y:.2f}%<extra></extra>",
+        ))
+
+    if a_ref and a_ref.get("f1_pct") is not None:
+        figure.add_hline(
+            y=float(a_ref["f1_pct"]),
+            line_dash="dash",
+            line_color=AMBER,
+            annotation_text=f"Det A Fixed Rule F1 ({a_ref['f1_pct']:.1f}%)",
+            annotation_position="bottom right",
+        )
+    figure.add_vline(x=65, line_dash="dash", line_color=GREEN, annotation_text="Det B Default (65)")
+    figure.add_vline(x=68, line_dash="dot", line_color=BLUE, annotation_text="Det C Default (68)", annotation_position="bottom left")
+    figure.update_xaxes(title_text="Score Threshold (50 – 95)", dtick=5)
+    figure.update_yaxes(title_text="Metric (%)", range=[0, 106])
+    return style(figure, 360)
+
+
+def detector_b_vs_c_correlation_chart(corr_data, alerts=None):
+    """Scatter & quadrant disagreement plot of Detector B (Historical Score) vs Detector C (Spark ML Score)."""
+    pts = (corr_data or {}).get("scatter_points") or alerts or []
+    if not pts:
+        return empty("Detector B vs Detector C correlation plot appears when alerts are available")
+
+    cohort_colors = {
+        "All-3 Consensus (A ∩ B ∩ C)": GREEN,
+        "B ∩ C Only (Quiet-Page Shifts Missed by A)": BLUE,
+        "A ∩ B Only (High-Threshold Rule + Hist)": AMBER,
+        "Detector B Only (Explainable Niche Surge)": "#06a6be",
+        "Detector C Only (ML Centroid Outlier)": "#7c3aed",
+        "Detector A Only (Hyperactive Routine Noise)": CORAL,
+    }
+    by_cohort = {}
+    for p in pts[:220]:
+        c_label = p.get("agreement_cohort")
+        if not c_label:
+            fa = bool(p.get("fixed_threshold_flag"))
+            fb = float(p.get("historical_score") or 0.0) >= 65.0
+            fc = float(p.get("spark_ml_score") or 0.0) >= 68.0
+            if fa and fb and fc:
+                c_label = "All-3 Consensus (A ∩ B ∩ C)"
+            elif (not fa) and fb and fc:
+                c_label = "B ∩ C Only (Quiet-Page Shifts Missed by A)"
+            elif fb and not fc:
+                c_label = "Detector B Only (Explainable Niche Surge)"
+            elif fc and not fb:
+                c_label = "Detector C Only (ML Centroid Outlier)"
+            else:
+                c_label = "Detector A Only (Hyperactive Routine Noise)"
+        by_cohort.setdefault(c_label, []).append(p)
+
+    figure = go.Figure()
+    # Reference diagonal y = x parity line
+    figure.add_trace(go.Scatter(
+        x=[50, 100], y=[50, 100],
+        mode="lines",
+        name="Parity (Det B == Det C)",
+        line=dict(color="rgba(120,135,160,0.45)", width=1.5, dash="dash"),
+        hoverinfo="skip",
+    ))
+    for cohort, rows in by_cohort.items():
+        figure.add_trace(go.Scatter(
+            x=[float(r.get("historical_score") or 0.0) for r in rows],
+            y=[float(r.get("spark_ml_score") or 0.0) for r in rows],
+            mode="markers",
+            name=cohort,
+            marker=dict(
+                size=[min(18, max(7, int(r.get("distinct_human_editors") or 3) + 4)) for r in rows],
+                color=cohort_colors.get(cohort, GREEN),
+                opacity=0.85,
+                line=dict(color="#ffffff", width=0.9),
+            ),
+            text=[
+                f"<b>{r.get('title')}</b> ({r.get('window_duration', '5m')})<br>"
+                f"Cohort: {cohort}<br>"
+                f"Class: {r.get('alert_type', '—')} · Centroid dist: {r.get('centroid_distance', '—')}"
+                for r in rows
+            ],
+            hovertemplate="%{text}<br>Det B (Historical): %{x:.1f}<br>Det C (Spark ML): %{y:.1f}<extra></extra>",
+        ))
+    figure.add_vline(x=65.0, line_dash="dot", line_color=GREEN, annotation_text="Det B ≥ 65")
+    figure.add_hline(y=68.0, line_dash="dot", line_color=BLUE, annotation_text="Det C ≥ 68")
+    figure.update_layout(hovermode="closest")
+    figure.update_xaxes(title_text="Detector B: Explainable Historical Score (0–100)", range=[48, 103])
+    figure.update_yaxes(title_text="Detector C: Spark ML Score (0–100)", range=[40, 103])
+    return style(figure, 360)
 
 
 def revert_risk_multi_curve(m6_revert_risk):

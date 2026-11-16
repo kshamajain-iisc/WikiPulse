@@ -54,7 +54,7 @@ def render_dashboard(service, pathname, search, duration, view, title, start, en
     load_start = start
     if page_name == "geospatial_map":
         load_view = query.get("mode", ["days"])[0]
-        load_start = query.get("range", ["55d"])[0]
+        load_start = query.get("range", ["62d"])[0]
         selected_title = query.get("region", ["ALL"])[0]
     data = service.load(
         page_name, duration, load_view, selected_title, load_start, end,
@@ -98,7 +98,7 @@ def render_dashboard(service, pathname, search, duration, view, title, start, en
         "milestone6",
     ):
         status = (
-            "HISTORICAL CURATED LAKE (ingest_curate · 2026-09-15 – 2026-11-08) · Last refresh: "
+            "HISTORICAL CURATED LAKE (ingest_curate · 2026-09-15 – 2026-11-15) · Last refresh: "
             + data.get("loaded_at", "pending")
         )
     else:
@@ -184,7 +184,7 @@ def register_callbacks(app, service):
                 "/historical": ("Loading historical intelligence", "Reading daily rankings, anomaly density, and baseline coverage…"),
                 "/anomaly-scoring": ("Loading anomaly scoring", "Reading multi-detector scores, component weights, and case studies…"),
                 "/ml-reports": ("Loading ML tests & reports", "Reading Spark ML models, synthetic injection tests, and false-alert audits…"),
-                "/contextual-features": ("Loading contextual features", "Reading topic graph spillover, revision diffs, subject map, and Lift Wing risk…"),
+                "/contextual-features": ("Loading contextual features", "Reading topic graph spillover, revision diffs, subject geography, and Lift Wing risk…"),
                 "/geospatial-map": ("Loading geospatial map", "Aggregating regional recentchanges edits across days and windows…"),
                 "/relationships": ("Loading relationship evidence", "Reading co-edit links and available locations…"),
                 "/system": ("Loading pipeline health", "Checking stream progress, storage, and benchmark summaries…"),
@@ -286,7 +286,7 @@ def register_callbacks(app, service):
                 target_region = str(pt["location"])
 
         data = service.load(
-            "geospatial_map", "5m", geo_mode or "days", target_region, geo_range or "55d", None
+            "geospatial_map", "5m", geo_mode or "days", target_region, geo_range or "62d", None
         )
         return (
             geospatial_map.render_content(
@@ -296,6 +296,51 @@ def register_callbacks(app, service):
                 selected_article_title=selected_article_title,
             ),
             target_region,
+        )
+
+    @app.callback(
+        Output("anomaly-scoring-content", "children"),
+        Output("anom-alert-select", "options"),
+        Output("anom-alert-select", "value"),
+        Input("anom-window", "value"),
+        Input("anom-shift-class", "value"),
+        Input("anom-threshold", "value"),
+        Input("anom-alert-select", "value"),
+        Input("anom-scatter-graph", "clickData", allow_optional=True),
+        running=[(Output("refresh-busy", "data"), True, False)],
+        prevent_initial_call=True,
+    )
+    def update_anomaly_scoring(anom_win, shift_cls, min_thresh, selected_alert, scatter_click):
+        data = service.load("anomaly_scoring", "5m", "finalized", None, "1m", None)
+        win_val = anom_win or "1w"
+        cls_val = shift_cls or "ALL"
+        thresh_val = float(min_thresh if min_thresh is not None else 65.0)
+        filtered = anomaly_scoring.filter_alerts(
+            data.get("alerts", []), window_horizon=win_val, shift_class=cls_val, min_score=thresh_val
+        )
+        options = anomaly_scoring.build_alert_dropdown_options(filtered)
+        option_vals = {opt["value"] for opt in options}
+
+        target_alert = selected_alert
+        if ctx.triggered_id == "anom-scatter-graph" and scatter_click:
+            pt = (scatter_click.get("points") or [{}])[0]
+            clicked_id = pt.get("customdata") or pt.get("text")
+            if clicked_id:
+                target_alert = str(clicked_id)
+
+        if not target_alert or (option_vals and target_alert not in option_vals):
+            target_alert = options[0]["value"] if options else None
+
+        return (
+            anomaly_scoring.render_content(
+                data,
+                window_horizon=win_val,
+                shift_class=cls_val,
+                min_score=thresh_val,
+                selected_alert_id=target_alert,
+            ),
+            options,
+            target_alert,
         )
 
     @app.callback(
