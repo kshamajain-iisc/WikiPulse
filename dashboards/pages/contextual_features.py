@@ -2,7 +2,6 @@
 
 from dash import html
 
-from dashboards import charts
 from dashboards import contextual_charts as ctx
 from dashboards.components import graph, heading, metric, notice, number, panel, pill_row, table
 
@@ -25,7 +24,6 @@ def render(data):
     curve = exp5.get("liftwing_ml_curve", [])
     comp_curve = exp5.get("composite_risk_curve", [])
     cal_finding = exp5.get("calibration_finding")
-    mttr = m6_risk.get("mttr_breakdown", {})
     countries = m6_geo.get("top_countries_or_regions", [])
     loc_src = m6_geo.get("location_source_breakdown", {})
     loc_qual = m6_geo.get("location_quality_breakdown", {})
@@ -83,14 +81,14 @@ def render(data):
         ], className="metric-grid"),
         pill_row(pills),
         *([notice("Empirical Revert-Risk Calibration Finding", cal_finding)] if cal_finding else []),
+        panel(
+            "Related-page & co-edit spillover network",
+            f"Showing {min(len(edges), 300)} of {g_enr.get('total_graph_edges', len(edges))} edges: alerted pages are "
+            "hubs (green), amber neighbours were co-edited in the same alert window, and blue bridges are linked "
+            "from ≥2 alerts. Hover any node for edit and editor counts.",
+            graph(ctx.spillover_hub_network(edges, max_edges=300), show_modebar=True),
+        ),
         html.Div([
-            panel(
-                "Related-page & co-edit spillover network",
-                "Alerted pages are hubs (sized by co-edited neighbours); amber neighbours were co-edited in the "
-                "same alert window and are sized by their in-window edits; blue bridges are linked from ≥2 alerts. "
-                "Hover any node for edit and editor counts.",
-                graph(ctx.spillover_hub_network(edges), show_modebar=True),
-            ),
             panel(
                 "Spillover share by alerted page",
                 f"Co-edited vs link-only neighbours per hub ({len(edges)} of "
@@ -98,63 +96,30 @@ def render(data):
                 "also changed during the alert",
                 graph(ctx.spillover_ratio_bars(edges)),
             ),
-        ], className="chart-grid wide-left"),
-        html.Div([
             panel(
-                "Precision–recall trade-off (Composite vs Lift Wing ML vs Heuristic)",
-                "Each point is a threshold τ (labelled); stars mark operating points; dotted arcs are iso-F1 "
-                "guides vs actual 48h reverts",
-                graph(ctx.revert_risk_pr_tradeoff(m6_risk)),
-            ),
-            panel(
-                "F1 by decision threshold",
-                "Stars mark each scorer's peak F1; hover shows precision, recall and false-positive rate at every τ",
-                graph(ctx.revert_risk_f1_by_threshold(m6_risk)),
+                "Top countries & regions by alerted topics",
+                "Subject geography (never editor IP); bar colour = peak anomaly score, label = human edits",
+                graph(ctx.country_topic_bars(countries)),
             ),
         ], className="chart-grid"),
         html.Div([
-            panel(
-                "Where reverted edits sit: Lift Wing ML vs heuristic risk",
-                "Each scored revision coloured by its actual 48h outcome (◆ = anonymous editor); the shaded area "
-                "is what the calibrated composite rule flags",
-                graph(ctx.revert_risk_separation(risks, m6_risk)),
-            ),
-            panel(
-                "Confusion matrices at the operating points",
-                "Counts and row-normalised rates: how many real reverts are caught vs how many kept edits are "
-                "falsely flagged",
-                graph(ctx.revert_risk_confusion(m6_risk)),
-            ),
-        ], className="chart-grid"),
-        html.Div([
-            panel(
-                "Time-to-revert distribution",
-                (f"Cumulative share of reverts done within a given time (log scale); summary: median "
-                 f"{(mttr.get('overall') or {}).get('median_sec', '—')}s vs mean "
-                 f"{(mttr.get('overall') or {}).get('mean_sec', '—')}s — the mean is dominated by a slow tail")
-                if mttr else "Cumulative share of reverts done within a given time (log scale)",
-                graph(ctx.time_to_revert_ecdf(risks, mttr) if risks else charts.mttr_comparison(mttr)),
-            ),
             panel(
                 "Revision diff profile",
                 "Lines added vs removed per compared revision (log–log); marker size = external links added, "
                 "✕ = compare not successful",
                 graph(ctx.revision_diff_profile(diffs)),
             ),
-        ], className="chart-grid"),
-        html.Div([
             panel(
-                "Top countries & regions by alerted topics",
-                "Subject geography (never editor IP); bar colour = peak anomaly score, label = human edits",
-                graph(ctx.country_topic_bars(countries)),
-            ),
-            panel(
-                "Subject location provenance & precision",
-                f"How {m6_geo.get('total_alert_subjects_evaluated', '—')} alerted subjects were located and how "
-                "precise each location is; unlocated subjects remain valid alerts",
-                graph(ctx.location_provenance_bars(loc_src, loc_qual)),
+                "Actual 48h revert rate by composite risk band",
+                "Higher composite risk bands correspond to sharply higher observed 48h revert rates",
+                graph(ctx.revert_risk_band_outcomes(risks)),
             ),
         ], className="chart-grid"),
+        panel(
+            "Revert risk model comparison (F1 by decision threshold)",
+            "Composite (0.72·ML + 0.28·heuristic) vs standalone Lift Wing ML and Heuristic rules; stars mark peak F1",
+            graph(ctx.revert_risk_f1_by_threshold(m6_risk)),
+        ),
         panel(
             "Empirical threshold calibration table (Lift Wing ML & Composite Risk)",
             "TP / FP / FN / TN and Precision / Recall / F1 across candidate thresholds",

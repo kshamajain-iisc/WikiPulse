@@ -222,7 +222,12 @@ class DashboardQueries:
                 out[k] = v
         return out
 
-    def historical_optional_records(self, name: str, title: str | None = None) -> list[dict]:
+    def historical_optional_records(
+        self,
+        name: str,
+        title: str | None = None,
+        limit: int = 200,
+    ) -> list[dict]:
         """Return bounded records strictly from the historical curated lake (`ingest_curate`)."""
         if pa_ds is not None and name in ("graph_edges", "revision_diffs", "map_points", "revert_risk_eval"):
             files = self._parquet_files(name, prefer_curated_lake=True)
@@ -235,7 +240,7 @@ class DashboardQueries:
                     rows = [r for r in rows if r.get("title") == title]
                 if rows and "window_start" in rows[0]:
                     rows.sort(key=lambda r: str(r.get("window_start") or ""), reverse=True)
-                return rows[:200]
+                return rows[:limit]
         frame = self.historical_table(name)
         if frame is None:
             return []
@@ -243,7 +248,7 @@ class DashboardQueries:
             frame = frame.filter(F.col("title") == title)
         if "window_start" in frame.columns:
             frame = frame.orderBy(F.desc("window_start"))
-        return records(frame, 200)
+        return records(frame, limit)
 
     def historical_alerts(self, duration: str | None = None) -> list[dict]:
         """Read historical curated alerts produced by the batch `ingest_curate` / M5 pipeline."""

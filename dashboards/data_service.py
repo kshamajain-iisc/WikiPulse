@@ -119,9 +119,15 @@ class DashboardDataService:
         res = self.queries.alerts(duration)
         return res if isinstance(res, list) else []
 
-    def _historical_records_list(self, table_name):
+    def _historical_records_list(self, table_name, limit=None):
         if hasattr(self.queries, "historical_optional_records"):
-            res = self.queries.historical_optional_records(table_name)
+            if limit is not None:
+                try:
+                    res = self.queries.historical_optional_records(table_name, limit=limit)
+                except TypeError:
+                    res = self.queries.historical_optional_records(table_name)
+            else:
+                res = self.queries.historical_optional_records(table_name)
             if isinstance(res, list):
                 return res
         res = self.queries.optional_records(table_name)
@@ -158,9 +164,10 @@ class DashboardDataService:
                 "alerts": alerts,
             }
         if page in ("contextual_features", "milestone6"):
+            edge_limit = 300 if page == "contextual_features" else None
             return {
                 "ingestion_summary": self._read_benchmark("ingestion_summary.json"),
-                "edges": self._historical_records_list("graph_edges"),
+                "edges": self._historical_records_list("graph_edges", limit=edge_limit),
                 "points": self._historical_records_list("map_points"),
                 "diffs": self._historical_records_list("revision_diffs"),
                 "risks": self._historical_records_list("revert_risk_eval"),
