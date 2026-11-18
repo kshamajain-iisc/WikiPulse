@@ -1,4 +1,7 @@
-"""Dedicated UI Page 2: Spark ML Introspection (KMeans k=6 + Centroid Feature + RF), Threshold Calibration (50..95), Detector B vs C Correlation & 3-Detector Synthetic Injection."""
+"""Dedicated UI Page 2: Spark ML Introspection (KMeans k=6 + Centroid Feature + RF), Detector Precision/False-Alert, Threshold Calibration (50..95) & Detector B vs C Disagreement.
+
+See docs/spark_ml_reports_explained.md for how every number on this page is produced.
+"""
 
 from dash import html
 
@@ -19,7 +22,6 @@ def render(data):
     silhouette = ml.get("kmeans_silhouette_score")
 
     synth = m5_eval.get("experiment_2_synthetic_pattern_injection", {})
-    pattern_details = synth.get("pattern_details", [])
     fa_comp = m5_eval.get("experiment_4_detector_false_alert_comparison", {})
     full_comp = fa_comp.get("full_evaluation_comparison", [])
     sample_comp = fa_comp.get("reviewed_200_window_sample_audit", [])
@@ -41,34 +43,13 @@ def render(data):
     mean_gap = corr_disagreement.get("mean_abs_score_diff")
 
     idemp = m5_eval.get("metric_4_replay_idempotency", {})
-    lake_audit = m5_eval.get("milestones_1_4_5_curated_lake_audit", {})
-    tables_verified = lake_audit.get("tables_verified", {})
 
     top_feature = max(importances.items(), key=lambda kv: kv[1])[0] if importances else "—"
     top_feature_pct = f"{importances[top_feature] * 100:.1f}%" if importances and top_feature in importances else "—"
     centroid_imp = importances.get("f_centroid_distance")
     centroid_imp_pct = f"{centroid_imp * 100:.1f}%" if centroid_imp is not None else "—"
-
-    # Combined calibration table rows across thresholds 50..95 for Detectors B and C
-    calib_rows = []
-    b_by_t = {r["threshold"]: r for r in calib_curve.get("detector_b_curve", [])}
-    c_by_t = {r["threshold"]: r for r in calib_curve.get("detector_c_curve", [])}
-    for t_val in calib_curve.get("thresholds", []):
-        rb = b_by_t.get(t_val, {})
-        rc = c_by_t.get(t_val, {})
-        calib_rows.append({
-            "threshold": f"≥ {t_val}",
-            "b_flagged": rb.get("flagged"),
-            "b_precision_pct": rb.get("precision_pct"),
-            "b_recall_pct": rb.get("recall_pct"),
-            "b_f1_pct": rb.get("f1_pct"),
-            "b_fa_pct": rb.get("false_alert_rate_pct"),
-            "c_flagged": rc.get("flagged"),
-            "c_precision_pct": rc.get("precision_pct"),
-            "c_recall_pct": rc.get("recall_pct"),
-            "c_f1_pct": rc.get("f1_pct"),
-            "c_fa_pct": rc.get("false_alert_rate_pct"),
-        })
+    ranked_features = [k for k, _ in sorted(importances.items(), key=lambda kv: -kv[1])]
+    centroid_rank = ranked_features.index("f_centroid_distance") + 1 if "f_centroid_distance" in ranked_features else "—"
 
     venn_pills = [(k, f"{v:,}") for k, v in venn_overlap.items()]
 
@@ -86,29 +67,17 @@ def render(data):
         ("SHA-256 ID parity", f"{idemp.get('python_spark_alert_id_parity_checked', '—')}/{idemp.get('distinct_alert_ids', '—')}"),
     ]
 
-    lake_rows = [
-        {
-            "table_name": f"curated/{tname}",
-            "rows": info.get("rows"),
-            "columns": info.get("columns"),
-            "schema_valid": info.get("schema_valid"),
-        }
-        for tname, info in tables_verified.items()
-    ]
-
-    idemp_rows = [idemp] if idemp else []
-
     return [
         heading(
             "EVALUATE / HISTORICAL ML TESTS & REPORTS (INGEST_CURATE)",
-            "Spark ML introspection, synthetic injection & false-alert audits.",
-            "Strictly historical curated evaluation from ingest_curate.py (2026-09-15 – 2026-11-15): inspect KMeans (k=6) behavioral cluster centroids, the f_centroid_distance feature in Random Forest, Threshold Calibration Curves (50..95), Detector B vs. C Score Correlation/Disagreement, and 3-Detector Synthetic Injection.",
+            "Spark ML introspection, detector calibration & false-alert audits.",
+            "Strictly historical curated evaluation from ingest_curate.py (2026-09-15 – 2026-11-15): inspect KMeans (k=6) behavioral cluster centroids, the f_centroid_distance feature in Random Forest, Precision vs False-Alert Rate, Threshold Calibration Curves (50..95), and Detector B vs. C Score Correlation/Disagreement.",
         ),
         html.Div([
             metric(
                 "KMEANS (K=6) & CENTROID FEATURE",
                 f"Sil {silhouette:.3f}" if silhouette is not None else "k=6",
-                f"f_centroid_distance is #{2 if centroid_imp else 1} RF driver ({centroid_imp_pct} importance)",
+                f"f_centroid_distance is #{centroid_rank} of {len(ranked_features)} RF drivers ({centroid_imp_pct} importance)",
                 True,
             ),
             metric(
@@ -142,89 +111,27 @@ def render(data):
                 graph(charts.kmeans_clusters(clusters, normal_cluster, cluster_profiles)),
             ),
         ], className="chart-grid"),
+        panel(
+            "KMeans (k=6) standardized centroid feature profiles (8D z-score heatmap)",
+            "Exact standardized centroid coordinates (σ) separating Normal Baseline, Major Rewrite, Edit War, Solo Revert, Collaborative Surge, and Bot-Assisted Maintenance",
+            graph(charts.kmeans_centroid_heatmap(cluster_profiles)),
+        ),
         html.Div([
             panel(
-                "KMeans (k=6) standardized centroid feature profiles (8D z-score heatmap)",
-                "Exact standardized centroid coordinates (σ) separating Normal Baseline, Major Rewrite, Edit War, Breaking Surge, and Bot Sweep",
-                graph(charts.kmeans_centroid_heatmap(cluster_profiles)),
+                "Precision vs False-Alert Rate across Detectors A, B & C",
+                "Full evaluation corpus comparison demonstrating false-alert suppression",
+                graph(charts.false_alert_comparison_chart(full_comp, sample_comp)),
             ),
-            panel(
-                "Threshold calibration / Precision–Recall–F1 tradeoff curve (Thresholds 50..95)",
-                "Precision (%), Recall (%), and F1-Score (%) across score thresholds 50..95 for Detector B (Historical) and Detector C (Spark ML)",
-                graph(charts.ml_threshold_calibration_chart(calib_curve)),
-            ),
-        ], className="chart-grid"),
-        html.Div([
             panel(
                 "Detector B vs. Detector C score correlation & disagreement quadrants",
                 f"Historical Score (x) vs Spark ML Score (y) colored by 3-detector agreement cohort (Pearson r={pearson_r or '—'}, mean gap={mean_gap or '—'} pts)",
                 graph(charts.detector_b_vs_c_correlation_chart(corr_disagreement, alerts)),
             ),
-            panel(
-                "Controlled synthetic pattern injection across ALL 3 Detectors (A, B & C)",
-                "5 positive knowledge-shift archetypes vs 2 negative controls evaluated on Fixed A, Historical B (≥65), and Spark ML C (≥68)",
-                graph(charts.synthetic_patterns_chart(pattern_details)),
-            ),
         ], className="chart-grid"),
         panel(
-            "KMeans (k=6) behavioral cluster & centroid profile table",
-            "Per-cluster window share, L2 centroid distance from normal baseline (#0), and mean behavioral telemetry",
-            table(cluster_profiles, [
-                ("Cluster", "cluster_id"),
-                ("Behavioral archetype", "archetype"),
-                ("Windows", "window_count"),
-                ("Share (%)", "share_pct"),
-                ("Centroid L2 dist", "centroid_distance_from_normal"),
-                ("Avg window dist", "avg_centroid_distance"),
-                ("Avg human edits", "avg_edits_human"),
-                ("Avg editors", "avg_distinct_editors"),
-                ("Avg gross bytes", "avg_gross_bytes"),
-                ("Avg revert ratio", "avg_revert_ratio"),
-                ("Avg bot share", "avg_bot_share"),
-                ("Avg velocity z", "avg_velocity_zscore"),
-                ("Avg Hist score", "avg_historical_score"),
-                ("Avg Spark ML", "avg_spark_ml_score"),
-            ], aria_label="KMeans cluster centroid profiles")
-            if cluster_profiles else notice("No cluster profiles", "Run scoring_sparkml.py to generate KMeans cluster profiles."),
-        ),
-        panel(
-            "Controlled synthetic knowledge-shift injection test suite across ALL 3 Detectors (A, B & C)",
-            "Verifies 100% positive recall (5/5) and 0 negative-control false triggers for both Detector B (Historical) and Detector C (Spark ML) vs Detector A (Fixed Rule: 3/5 recall, 1 false alert)",
-            table(pattern_details, [
-                ("Pattern / Control", "pattern_title"),
-                ("Positive?", "expected_positive"),
-                ("Expected class", "expected_alert_type"),
-                ("Actual class", "actual_alert_type"),
-                ("Fixed (A)", "detector_a_fixed_flag"),
-                ("Historical (B)", "detector_b_historical_flag"),
-                ("Spark ML (C)", "detector_c_spark_ml_flag"),
-                ("Hist Score", "historical_score"),
-                ("Spark ML Score", "spark_ml_score"),
-                ("Centroid Dist", "centroid_distance"),
-                ("Cluster #", "kmeans_cluster"),
-                ("Velocity z", "velocity_zscore"),
-                ("Reasons", "reasons_count"),
-                ("Passed", "passed_verification"),
-            ], aria_label="Synthetic pattern verification across all 3 detectors")
-            if pattern_details else notice("No synthetic patterns recorded", "Run evaluate_alerts.py to populate pattern verification."),
-        ),
-        panel(
-            "Threshold calibration report across score thresholds (50..95) — Detector B vs Detector C",
-            "Side-by-side Precision (%), Recall (%), F1-Score (%), and False-Alert Rate (%) across thresholds 50 to 95",
-            table(calib_rows, [
-                ("Threshold", "threshold"),
-                ("Det B Flagged", "b_flagged"),
-                ("Det B Prec (%)", "b_precision_pct"),
-                ("Det B Recall (%)", "b_recall_pct"),
-                ("Det B F1 (%)", "b_f1_pct"),
-                ("Det B FA (%)", "b_fa_pct"),
-                ("Det C Flagged", "c_flagged"),
-                ("Det C Prec (%)", "c_precision_pct"),
-                ("Det C Recall (%)", "c_recall_pct"),
-                ("Det C F1 (%)", "c_f1_pct"),
-                ("Det C FA (%)", "c_fa_pct"),
-            ], aria_label="Threshold calibration table across 50 to 95")
-            if calib_rows else notice("No calibration curve", "Run evaluate_alerts.py to populate threshold calibration."),
+            "Threshold calibration / Precision–Recall–F1 tradeoff curve (Thresholds 50..95)",
+            "Precision (%), Recall (%), and F1-Score (%) across score thresholds 50..95 for Detector B (Historical) and Detector C (Spark ML)",
+            graph(charts.ml_threshold_calibration_chart(calib_curve)),
         ),
         panel(
             "Detector disagreement & quiet-page shift audit (Where Detectors A, B, and C differ)",
@@ -237,8 +144,6 @@ def render(data):
                 ("Hist (B)", "historical_score"),
                 ("Spark ML (C)", "spark_ml_score"),
                 ("Gap (B−C)", "score_gap"),
-                ("Centroid dist", "centroid_distance"),
-                ("KMeans archetype", "kmeans_archetype"),
                 ("Fixed (A)", "fixed_threshold_flag"),
                 ("Human edits", "edits_human"),
                 ("Editors", "distinct_human_editors"),
@@ -246,54 +151,4 @@ def render(data):
             ], article_links=True, aria_label="Detector disagreement audit")
             if disagreement_examples else notice("No disagreement rows", "Run evaluate_alerts.py to populate detector disagreement examples."),
         ),
-        html.Div([
-            panel(
-                "Precision vs False-Alert Rate across Detectors A, B & C",
-                "Full evaluation corpus comparison demonstrating false-alert suppression",
-                graph(charts.false_alert_comparison_chart(full_comp, sample_comp)),
-            ),
-            panel(
-                "Full evaluation dataset: Detector false-alert & precision report",
-                "Comparison across Detector A (Naive Fixed), Detector A (All Shifts), Detector B (Historical Score), and Detector C (Spark ML)",
-                table(full_comp, [
-                    ("Detector", "detector"),
-                    ("Flagged", "total_flagged"),
-                    ("True shifts", "verified_true_shifts"),
-                    ("False alerts", "false_alerts"),
-                    ("Precision (%)", "precision_pct"),
-                    ("False-alert (%)", "false_alert_rate_pct"),
-                    ("High-revert", "high_revert_war_windows"),
-                    ("Avg velocity z", "avg_velocity_zscore"),
-                ], aria_label="Full evaluation detector comparison")
-                if full_comp else notice("No evaluation summary", "Run evaluate_alerts.py to populate detector comparison metrics."),
-            ),
-        ], className="chart-grid"),
-        html.Div([
-            panel(
-                "Replay idempotency & SHA-256 alert_id parity report",
-                "30% duplicate raw event injection + repeated window scoring & upsert verification",
-                table(idemp_rows, [
-                    ("Replay day", "replay_test_day"),
-                    ("Run 1 alerts", "run1_alerts_count"),
-                    ("Replayed merged", "replayed_merged_alerts_count"),
-                    ("Distinct IDs", "distinct_alert_ids"),
-                    ("Duplicates", "duplicate_alerts_after_replay"),
-                    ("Count drift", "count_drift_between_runs"),
-                    ("Python/Spark parity", "python_spark_alert_id_parity_checked"),
-                    ("Verified", "idempotency_verified"),
-                ], aria_label="Replay idempotency report")
-                if idemp_rows else notice("No replay idempotency report", "Run evaluate_alerts.py to verify replay idempotency."),
-            ),
-            panel(
-                "Curated Parquet lake schema & contract audit",
-                f"Top-25 alert radar query latency: {lake_audit.get('dashboard1_alerts_top25_query_sec', '—')}s (<2.0s SLA)",
-                table(lake_rows, [
-                    ("Curated table", "table_name"),
-                    ("Row count", "rows"),
-                    ("Columns", "columns"),
-                    ("Schema valid", "schema_valid"),
-                ], aria_label="Curated lake schema audit")
-                if lake_rows else notice("No lake audit recorded", "Run evaluate_alerts.py to audit curated tables."),
-            ),
-        ], className="chart-grid"),
     ]

@@ -47,17 +47,41 @@ def _india_hover_labels(rows, key):
 
 
 def style(figure, height=300):
+    existing_hovermode = figure.layout.hovermode
+    existing_margin = figure.layout.margin.to_plotly_json() if figure.layout.margin else {}
+    existing_legend = figure.layout.legend.to_plotly_json() if figure.layout.legend else {}
+
+    default_margin = dict(l=16, r=20, t=44, b=24)
+    default_margin.update({k: v for k, v in existing_margin.items() if v is not None})
+
+    default_legend = dict(
+        orientation="h",
+        y=1.02,
+        yanchor="bottom",
+        x=0,
+        xanchor="left",
+        font=dict(size=12),
+    )
+    default_legend.update({k: v for k, v in existing_legend.items() if v is not None})
+
     figure.update_layout(
-        template="plotly_white", height=height,
-        margin=dict(l=12, r=16, t=22, b=12),
-        font=dict(family="Arial, sans-serif", size=13, color="#66758d"),
-        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-        legend=dict(orientation="h", y=1.16, x=0),
-        hovermode="x unified",
+        template="plotly_white",
+        height=height,
+        margin=default_margin,
+        font=dict(family="Arial, sans-serif", size=12.5, color="#66758d"),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        legend=default_legend,
+        hovermode=existing_hovermode or "x unified",
+        hoverlabel=dict(
+            bgcolor="rgba(255, 255, 255, 0.96)",
+            bordercolor="#cbd5e1",
+            font=dict(size=12, color="#1e293b"),
+        ),
         colorway=[GREEN, BLUE, AMBER],
     )
-    figure.update_xaxes(showgrid=False, zeroline=False)
-    figure.update_yaxes(gridcolor="#e5eaf3", zeroline=False)
+    figure.update_xaxes(showgrid=False, zeroline=False, automargin=True)
+    figure.update_yaxes(gridcolor="#e5eaf3", zeroline=False, automargin=True)
     return figure
 
 
@@ -385,6 +409,7 @@ def rf_feature_importances(importances):
         x=values, y=labels, orientation="h", marker_color=GREEN,
         hovertemplate="%{y}: %{x:.2f}%<extra></extra>",
     ))
+    figure.update_layout(showlegend=False, hovermode="closest", margin=dict(l=16, r=20, t=16, b=32))
     figure.update_xaxes(title_text="Importance (%)")
     figure.update_yaxes(automargin=True)
     return style(figure, 320)
@@ -433,10 +458,14 @@ def kmeans_clusters(cluster_sizes, normal_cluster_id=None, cluster_profiles=None
             hovertemplate="%{x}<br>Centroid distance: %{y:.3f}<extra></extra>",
         ))
         figure.update_layout(
+            hovermode="closest",
+            margin=dict(l=16, r=24, t=48, b=28),
+            legend=dict(orientation="h", y=1.03, yanchor="bottom", x=0, xanchor="left"),
             yaxis=dict(title="Page windows"),
             yaxis2=dict(title="Centroid distance (L2)", overlaying="y", side="right", showgrid=False),
         )
-        return style(figure, 340)
+        figure.update_xaxes(tickangle=-15, tickfont=dict(size=11))
+        return style(figure, 350)
 
     items = sorted(cluster_sizes.items(), key=lambda kv: int(kv[0]))
     labels = [
@@ -487,6 +516,7 @@ def kmeans_centroid_heatmap(cluster_profiles):
         hovertemplate="Cluster: %{y}<br>Feature: %{x}<br>Centroid coordinate: %{z:+.3f}σ<extra></extra>",
         colorbar=dict(title="Std (σ)", thickness=12),
     ))
+    figure.update_layout(showlegend=False, hovermode="closest", margin=dict(l=16, r=24, t=18, b=28))
     figure.update_yaxes(automargin=True)
     return style(figure, 340)
 
@@ -614,10 +644,14 @@ def anomaly_scatter(alerts, threshold=65.0, selected_alert_id=None):
             annotation_text=f"Min Score Threshold ({float(threshold):.0f})",
             annotation_position="bottom right",
         )
-    figure.update_layout(hovermode="closest")
-    figure.update_xaxes(title_text="Velocity Z-Score (capped at 300)")
+    figure.update_layout(
+        hovermode="closest",
+        margin=dict(l=16, r=16, t=20, b=82),
+        legend=dict(orientation="h", y=-0.20, yanchor="top", x=0, xanchor="left", font=dict(size=11)),
+    )
+    figure.update_xaxes(title_text="Velocity Z-Score (capped at 300)", title_standoff=8)
     figure.update_yaxes(title_text="Historical Score (0–100)", range=[45, 105])
-    return style(figure, 340)
+    return style(figure, 390)
 
 
 def single_alert_explainability_chart(alert_row, threshold=65.0):
@@ -673,10 +707,15 @@ def single_alert_explainability_chart(alert_row, threshold=65.0):
             annotation_text=f"Threshold ({float(threshold):.0f})",
             annotation_position="top",
         )
-    figure.update_layout(barmode="overlay")
+    figure.update_layout(
+        barmode="overlay",
+        hovermode="closest",
+        margin=dict(l=16, r=20, t=48, b=28),
+        legend=dict(orientation="h", y=1.03, yanchor="bottom", x=0, xanchor="left"),
+    )
     figure.update_xaxes(title_text="Points / Score (0–100 scale)", range=[0, 108])
     figure.update_yaxes(automargin=True)
-    return style(figure, 320)
+    return style(figure, 330)
 
 
 def false_alert_comparison_chart(full_comp, sample_comp=None):
@@ -712,9 +751,14 @@ def false_alert_comparison_chart(full_comp, sample_comp=None):
         marker_color=AMBER,
         hovertemplate="%{x}<br>False-Alert Rate: %{y:.2f}%<extra></extra>",
     ))
-    figure.update_layout(barmode="group")
-    figure.update_yaxes(title_text="Percentage (%)", range=[0, 108])
-    return style(figure, 320)
+    figure.update_layout(
+        barmode="group",
+        hovermode="closest",
+        margin=dict(l=16, r=16, t=46, b=28),
+        legend=dict(orientation="h", y=1.03, yanchor="bottom", x=0, xanchor="left"),
+    )
+    figure.update_yaxes(title_text="Percentage (%)", range=[0, 110])
+    return style(figure, 360)
 
 
 def synthetic_patterns_chart(pattern_details):
@@ -841,11 +885,24 @@ def ml_threshold_calibration_chart(calib_data, detector_focus="both"):
             annotation_text=f"Det A Fixed Rule F1 ({a_ref['f1_pct']:.1f}%)",
             annotation_position="bottom right",
         )
-    figure.add_vline(x=65, line_dash="dash", line_color=GREEN, annotation_text="Det B Default (65)")
-    figure.add_vline(x=68, line_dash="dot", line_color=BLUE, annotation_text="Det C Default (68)", annotation_position="bottom left")
-    figure.update_xaxes(title_text="Score Threshold (50 – 95)", dtick=5)
-    figure.update_yaxes(title_text="Metric (%)", range=[0, 106])
-    return style(figure, 360)
+    figure.add_vline(
+        x=65, line_dash="dash", line_color=GREEN,
+        annotation_text="Det B Default (65)", annotation_position="top left",
+        annotation_xshift=-4, annotation_font=dict(size=11, color=GREEN),
+    )
+    figure.add_vline(
+        x=68, line_dash="dot", line_color=BLUE,
+        annotation_text="Det C Default (68)", annotation_position="bottom right",
+        annotation_xshift=4, annotation_font=dict(size=11, color=BLUE),
+    )
+    figure.update_layout(
+        hovermode="closest",
+        margin=dict(l=16, r=20, t=24, b=82),
+        legend=dict(orientation="h", y=-0.20, yanchor="top", x=0.5, xanchor="center", font=dict(size=11.5)),
+    )
+    figure.update_xaxes(title_text="Score Threshold (50 – 95)", dtick=5, title_standoff=8)
+    figure.update_yaxes(title_text="Metric (%)", range=[0, 108])
+    return style(figure, 410)
 
 
 def detector_b_vs_c_correlation_chart(corr_data, alerts=None):
@@ -905,17 +962,29 @@ def detector_b_vs_c_correlation_chart(corr_data, alerts=None):
             text=[
                 f"<b>{r.get('title')}</b> ({r.get('window_duration', '5m')})<br>"
                 f"Cohort: {cohort}<br>"
-                f"Class: {r.get('alert_type', '—')} · Centroid dist: {r.get('centroid_distance', '—')}"
+                f"Class: {r.get('alert_type', '—')}"
                 for r in rows
             ],
             hovertemplate="%{text}<br>Det B (Historical): %{x:.1f}<br>Det C (Spark ML): %{y:.1f}<extra></extra>",
         ))
-    figure.add_vline(x=65.0, line_dash="dot", line_color=GREEN, annotation_text="Det B ≥ 65")
-    figure.add_hline(y=68.0, line_dash="dot", line_color=BLUE, annotation_text="Det C ≥ 68")
-    figure.update_layout(hovermode="closest")
-    figure.update_xaxes(title_text="Detector B: Explainable Historical Score (0–100)", range=[48, 103])
+    figure.add_vline(
+        x=65.0, line_dash="dot", line_color=GREEN,
+        annotation_text="Det B ≥ 65", annotation_position="top left",
+        annotation_font=dict(size=11, color=GREEN),
+    )
+    figure.add_hline(
+        y=68.0, line_dash="dot", line_color=BLUE,
+        annotation_text="Det C ≥ 68", annotation_position="bottom right",
+        annotation_font=dict(size=11, color=BLUE),
+    )
+    figure.update_layout(
+        hovermode="closest",
+        margin=dict(l=16, r=16, t=20, b=112),
+        legend=dict(orientation="h", y=-0.24, yanchor="top", x=0, xanchor="left", font=dict(size=11)),
+    )
+    figure.update_xaxes(title_text="Detector B: Explainable Historical Score (0–100)", range=[48, 103], title_standoff=8)
     figure.update_yaxes(title_text="Detector C: Spark ML Score (0–100)", range=[40, 103])
-    return style(figure, 360)
+    return style(figure, 420)
 
 
 def revert_risk_multi_curve(m6_revert_risk):

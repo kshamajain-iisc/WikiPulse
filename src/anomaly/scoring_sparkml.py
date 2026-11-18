@@ -15,8 +15,8 @@ Implements and compares the 3 Proposal Anomaly Detectors across `page_windows_5m
       `MAJOR_REWRITE`.
 - **Detector C (Spark ML Pipeline — `KMeans` + `RandomForestClassifier`)**:
     * Standardizes an 8-dimensional window feature vector via `VectorAssembler` + `StandardScaler`.
-    * Fits unsupervised `KMeans(k=8)` (computing standardized Euclidean distance from normal
-      activity centroids) and `RandomForestClassifier(numTrees=35)` to produce `spark_ml_score`.
+    * Fits unsupervised `KMeans(k=6)` (computing standardized Euclidean distance from normal
+      activity centroids) and `RandomForestClassifier(numTrees=40)` to produce `spark_ml_score`.
 
 Writes `curated/alerts` conforming strictly to `ALERT_SCHEMA` with deterministic SHA-256 `alert_id`.
 
@@ -446,20 +446,23 @@ def _prepare_ml_feature_df(df: DataFrame) -> tuple[DataFrame, list[str]]:
     return feat_df, kmeans_feature_cols
 
 
-def _infer_cluster_archetype(cid: int, normal_id: int, row_dict: dict, max_vel_id: int, max_rev_id: int, max_bot_id: int, max_bytes_id: int) -> str:
+def _infer_cluster_archetype(cid: int, normal_id: int, row_dict: dict, *_unused) -> str:
+    """Name a KMeans cluster from its own mean profile (each cluster judged independently)."""
     if cid == normal_id:
         return "Normal Quiet Baseline"
-    if cid == max_bot_id and float(row_dict.get("avg_bot_share") or 0.0) >= 0.25:
-        return "Automated Bot Sweep"
-    if cid == max_rev_id and float(row_dict.get("avg_revert_ratio") or 0.0) >= 0.15:
-        return "High-Revert Edit War / Dispute"
-    if cid == max_vel_id:
-        return "Multi-Editor Breaking Surge"
-    if cid == max_bytes_id:
-        return "Major Content Rewrite / Expansion"
-    if float(row_dict.get("avg_velocity_zscore") or 0.0) >= 8.0:
-        return "Elevated Velocity Activity"
-    return "Moderate Routine Collaborative"
+    revert = float(row_dict.get("avg_revert_ratio") or 0.0)
+    editors = float(row_dict.get("avg_distinct_editors") or 0.0)
+    bot = float(row_dict.get("avg_bot_share") or 0.0)
+    gross = float(row_dict.get("avg_gross_bytes") or 0.0)
+    if revert >= 0.5:
+        return "Multi-Editor Edit War" if editors >= 1.5 else "Solo Revert / Cleanup"
+    if bot >= 0.10:
+        return "Bot-Assisted Maintenance"
+    if editors >= 2.0:
+        return "Multi-Editor Collaborative Surge"
+    if gross >= 1500:
+        return "Single-Editor Major Rewrite"
+    return "Moderate Routine Activity"
 
 
 def fit_and_score_spark_ml(
@@ -597,22 +600,12 @@ def fit_and_score_spark_ml(
     )
     total_ns0 = max(1, sum(int(r["window_count"]) for r in profile_rows))
     raw_profiles = {int(r["kmeans_cluster"]): r.asDict() for r in profile_rows}
-    non_normal_ids = [cid for cid in raw_profiles if cid != normal_cluster_id] or list(raw_profiles.keys())
-    max_vel_id = max(non_normal_ids, key=lambda c: float(raw_profiles[c].get("avg_velocity_zscore") or 0.0))
-    max_rev_id = max(non_normal_ids, key=lambda c: float(raw_profiles[c].get("avg_revert_ratio") or 0.0))
-    max_bot_id = max(non_normal_ids, key=lambda c: float(raw_profiles[c].get("avg_bot_share") or 0.0))
-    max_bytes_id = max(
-        [c for c in non_normal_ids if c != max_vel_id] or non_normal_ids,
-        key=lambda c: float(raw_profiles[c].get("avg_gross_bytes") or 0.0),
-    )
 
     cluster_profiles = []
     for cid, pdict in sorted(raw_profiles.items(), key=lambda kv: -int(kv[1]["window_count"])):
         c_vec = centers[cid] if cid < len(centers) else [0.0] * len(kmeans_feature_cols)
         c_dist = sum((c_vec[i] - normal_center[i]) ** 2 for i in range(len(kmeans_feature_cols))) ** 0.5
-        archetype = _infer_cluster_archetype(
-            cid, normal_cluster_id, pdict, max_vel_id, max_rev_id, max_bot_id, max_bytes_id
-        )
+        archetype = _infer_cluster_archetype(cid, normal_cluster_id, pdict)
         cluster_profiles.append({
             "cluster_id": cid,
             "archetype": archetype,

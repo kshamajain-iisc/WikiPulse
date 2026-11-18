@@ -38,7 +38,6 @@ class ContextualChartsTest(unittest.TestCase):
             ctx.spillover_ratio_bars([]),
             ctx.country_topic_bars([]),
             ctx.revision_diff_profile([]),
-            ctx.revert_risk_f1_by_threshold({}),
             ctx.revert_risk_band_outcomes([]),
         ):
             self.assertEqual(len(figure.data), 0)
@@ -63,9 +62,6 @@ class ContextualChartsTest(unittest.TestCase):
         self.assertEqual(line_coords, 300 * 3)
 
     def test_simplified_revert_risk_and_geo_charts(self):
-        f1_fig = ctx.revert_risk_f1_by_threshold(M6)
-        self.assertEqual(len([t for t in f1_fig.data if t.mode == "lines+markers"]), 3)
-
         bands_fig = ctx.revert_risk_band_outcomes(RISKS)
         self.assertEqual([t.name for t in bands_fig.data], ["Reverted ≤48h", "Kept"])
         self.assertEqual(sum(bands_fig.data[0].y) + sum(bands_fig.data[1].y), 3)

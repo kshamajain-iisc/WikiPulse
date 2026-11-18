@@ -8,7 +8,6 @@ from dashboards.components import graph, heading, metric, notice, number, panel,
 
 def render(data):
     edges = data.get("edges", [])
-    points = data.get("points", [])
     diffs = data.get("diffs", [])
     risks = data.get("risks", [])
     m6_graph = data.get("m6_graph_diffs", {})
@@ -21,8 +20,6 @@ def render(data):
     r_cov = m6_risk.get("coverage_metrics", {})
     r_pre = m6_risk.get("prefilter_efficiency", {})
     exp5 = m6_risk.get("experiment_5_threshold_calibration", {})
-    curve = exp5.get("liftwing_ml_curve", [])
-    comp_curve = exp5.get("composite_risk_curve", [])
     cal_finding = exp5.get("calibration_finding")
     countries = m6_geo.get("top_countries_or_regions", [])
     loc_src = m6_geo.get("location_source_breakdown", {})
@@ -116,28 +113,6 @@ def render(data):
             ),
         ], className="chart-grid"),
         panel(
-            "Revert risk model comparison (F1 by decision threshold)",
-            "Composite (0.72·ML + 0.28·heuristic) vs standalone Lift Wing ML and Heuristic rules; stars mark peak F1",
-            graph(ctx.revert_risk_f1_by_threshold(m6_risk)),
-        ),
-        panel(
-            "Empirical threshold calibration table (Lift Wing ML & Composite Risk)",
-            "TP / FP / FN / TN and Precision / Recall / F1 across candidate thresholds",
-            table(comp_curve or curve, [
-                ("Threshold (τ)", "threshold"),
-                ("TP", "tp"),
-                ("FP", "fp"),
-                ("FN", "fn"),
-                ("TN", "tn"),
-                ("Precision (%)", "precision_pct"),
-                ("Recall (%)", "recall_pct"),
-                ("F1 (%)", "f1_pct"),
-                ("Accuracy (%)", "accuracy_pct"),
-                ("FPR (%)", "false_positive_rate_pct"),
-            ], aria_label="Revert risk calibration table")
-            if (comp_curve or curve) else notice("No calibration curve", "Run revert_risk_monitor.py to populate threshold calibration."),
-        ),
-        panel(
             "Scored revisions & Lift Wing Revert Risk outcomes",
             "Lift Wing ML probabilities vs low-cost heuristic risk, composite risk, and actual 48h revert outcomes",
             table(risks or rev_highlights, [
@@ -154,48 +129,4 @@ def render(data):
                 ("API status", "api_status"),
             ], article_links=True, aria_label="Scored revisions and revert outcomes"),
         ),
-        panel(
-            "MediaWiki revision diff comparisons (action=compare)",
-            "Extracted line additions/removals, byte deltas, and safe text snippets for alerted revisions",
-            table(diffs, [
-                ("Article", "title"),
-                ("From rev", "from_revid"),
-                ("To rev", "revid"),
-                ("User", "user"),
-                ("Delta (B)", "delta_bytes"),
-                ("+Lines", "added_lines_count"),
-                ("-Lines", "removed_lines_count"),
-                ("+Links", "external_links_added"),
-                ("Status", "compare_status"),
-                ("Edit comment", "comment"),
-                ("Diff snippet", "diff_snippet"),
-            ], article_links=True, aria_label="MediaWiki revision diff comparisons")
-            if diffs else notice("No revision diffs loaded", "Run graph_and_diffs.py to populate curated/revision_diffs."),
-        ),
-        html.Div([
-            panel(
-                "Co-edit spillover & link evidence",
-                "Directional outlinks/backlinks and same-window co-edit counts",
-                table(edges, [
-                    ("Source article", "source_title"),
-                    ("Target article", "target_title"),
-                    ("Relationship", "edge_type"),
-                    ("Co-edited", "co_edited_in_window"),
-                    ("Target edits", "target_edits_in_window"),
-                    ("Target editors", "target_distinct_editors"),
-                ], aria_label="Co-edit spillover and link evidence"),
-            ),
-            panel(
-                "Subject location provenance",
-                "Wikibase QID, country/region, coordinate source, and resolution quality",
-                table(points, [
-                    ("Article", "title"),
-                    ("Wikibase QID", "wikibase_item"),
-                    ("Country / region", "country_or_region"),
-                    ("Source", "location_source"),
-                    ("Quality", "location_quality"),
-                    ("Hist score", "historical_score"),
-                ], article_links=True, aria_label="Subject location provenance"),
-            ),
-        ], className="chart-grid"),
     ]

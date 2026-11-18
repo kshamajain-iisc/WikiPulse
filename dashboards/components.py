@@ -98,7 +98,17 @@ def table(rows, columns, article_links=False, aria_label="Data table"):
             if isinstance(value, bool):
                 value = "Yes" if value else "No"
             elif isinstance(value, list):
-                value = "; ".join(str(item) for item in value)
+                items = [str(item) for item in value if item is not None and str(item).strip()]
+                if len(items) > 1:
+                    value = html.Details([
+                        html.Summary([
+                            html.Span(items[0], className="cell-summary-text"),
+                            html.Span(f"+{len(items) - 1} more", className="cell-more-badge"),
+                        ]),
+                        html.Ul([html.Li(item) for item in items], className="cell-details-list"),
+                    ], className="cell-details")
+                else:
+                    value = items[0] if items else "—"
             elif isinstance(value, dict):
                 value = str(value)
             elif isinstance(value, float):
@@ -109,11 +119,11 @@ def table(rows, columns, article_links=False, aria_label="Data table"):
                 value = "—"
             if article_links and key == "title":
                 value = dcc.Link(value, href="/investigation?title=" + quote(row["title"], safe=""))
-            cells.append(html.Td(value))
+            cells.append(html.Td(value, className=f"col-{key}"))
         body.append(html.Tr(cells))
     return html.Div(
         html.Table([
-            html.Thead(html.Tr([html.Th(label) for label, _ in columns])), html.Tbody(body)
+            html.Thead(html.Tr([html.Th(label, className=f"col-{key}") for label, key in columns])), html.Tbody(body)
         ]),
         className="table-scroll",
         tabIndex=0,

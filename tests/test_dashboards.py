@@ -354,7 +354,7 @@ class DashboardPresentationTests(unittest.TestCase):
         service = DashboardDataService(queries)
         for route, expected_heading in (
             ("/anomaly-scoring", "Explainable knowledge-shift scoring."),
-            ("/ml-reports", "Spark ML introspection, synthetic injection & false-alert audits."),
+            ("/ml-reports", "Spark ML introspection, detector calibration & false-alert audits."),
             ("/contextual-features", "Topic spillover, subject geography & Lift Wing Revert Risk."),
             ("/geospatial-map", "Regional edits across days and windows."),
             ("/historical", "Historical anomaly timeline & shift density"),

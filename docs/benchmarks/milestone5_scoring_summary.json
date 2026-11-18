@@ -57,7 +57,7 @@
       },
       {
         "cluster_id": 0,
-        "archetype": "Multi-Editor Breaking Surge",
+        "archetype": "Single-Editor Major Rewrite",
         "window_count": 52700,
         "share_pct": 22.32,
         "centroid_distance_from_normal": 2.258,
@@ -83,7 +83,7 @@
       },
       {
         "cluster_id": 2,
-        "archetype": "High-Revert Edit War / Dispute",
+        "archetype": "Multi-Editor Edit War",
         "window_count": 24792,
         "share_pct": 10.5,
         "centroid_distance_from_normal": 4.365,
@@ -109,7 +109,7 @@
       },
       {
         "cluster_id": 5,
-        "archetype": "Elevated Velocity Activity",
+        "archetype": "Multi-Editor Collaborative Surge",
         "window_count": 15206,
         "share_pct": 6.44,
         "centroid_distance_from_normal": 3.291,
@@ -135,7 +135,7 @@
       },
       {
         "cluster_id": 4,
-        "archetype": "Elevated Velocity Activity",
+        "archetype": "Solo Revert / Cleanup",
         "window_count": 10268,
         "share_pct": 4.35,
         "centroid_distance_from_normal": 2.75,
@@ -161,7 +161,7 @@
       },
       {
         "cluster_id": 3,
-        "archetype": "Moderate Routine Collaborative",
+        "archetype": "Bot-Assisted Maintenance",
         "window_count": 9223,
         "share_pct": 3.91,
         "centroid_distance_from_normal": 3.813,
