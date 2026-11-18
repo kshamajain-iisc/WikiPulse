@@ -1,0 +1,291 @@
+{
+  "scenario": "31 October 2026 10:00 UTC; wait 2\u20133 minutes; change to 4 November 2026 10:00 UTC",
+  "finding": "An orphan standalone live collector PID 93796, started at 19:58:36 IST, was publishing into the same topic. Verified cwd/log path and sent SIGINT to isolate the test.",
+  "samples": [
+    {
+      "observed_at": "2026-11-16T16:59:01.192014+00:00",
+      "source": {
+        "mode": "since",
+        "since": "2026-10-31T10:00:00.000Z"
+      },
+      "collector": {
+        "since": "2026-10-31T10:00:00.000Z",
+        "state": "connected",
+        "queued_events": 7828,
+        "queued_bytes": 10244046,
+        "first_event": "2026-11-09T13:50:21+00:00",
+        "latest_event": "2026-11-09T15:31:31+00:00",
+        "started_at": "2026-11-16T16:57:49.474735+00:00",
+        "message": "Wikipedia connected; fetching since 2026-10-31T10:00:00.000Z",
+        "updated_at": "2026-11-16T16:58:59.923625+00:00",
+        "delivery": {
+          "received": 277203,
+          "filtered": 269375,
+          "invalid": 0,
+          "queued": 7828,
+          "published": 7782,
+          "failed": 0
+        }
+      },
+      "supervisor": {
+        "state": "running",
+        "supervisor_pid": 6441,
+        "updated_at": "2026-11-16T16:59:00.623827+00:00",
+        "services": {
+          "dashboard": {
+            "pid": 6469,
+            "running": true
+          },
+          "bronze": {
+            "pid": 6511,
+            "running": true
+          },
+          "windows-5m": {
+            "pid": 6577,
+            "running": true
+          },
+          "windows-1h": {
+            "pid": 6737,
+            "running": true
+          },
+          "detection-5m": {
+            "pid": 6922,
+            "running": true
+          },
+          "detection-1h": {
+            "pid": 7396,
+            "running": true
+          },
+          "collector": {
+            "pid": 24459,
+            "running": true
+          }
+        },
+        "error": null
+      },
+      "receipt": {
+        "id": "08b46aeedb7b4014a5b3838ba1887235",
+        "action": "source",
+        "requested_at": "2026-11-16T16:57:23.568693+00:00",
+        "source": {
+          "mode": "since",
+          "since": "2026-10-31T10:00:00.000Z"
+        },
+        "message": "Wikipedia connected from 2026-10-31T10:00:00.000Z. Available upstream history is being captured; the connection continues live after catching up.",
+        "ok": true
+      }
+    },
+    {
+      "observed_at": "2026-11-16T17:00:15.832113+00:00",
+      "source": {
+        "mode": "since",
+        "since": "2026-10-31T10:00:00.000Z"
+      },
+      "collector": {
+        "since": "2026-10-31T10:00:00.000Z",
+        "state": "connected",
+        "queued_events": 13326,
+        "queued_bytes": 17435823,
+        "first_event": "2026-11-09T13:50:21+00:00",
+        "latest_event": "2026-11-09T16:39:26+00:00",
+        "started_at": "2026-11-16T16:57:49.474735+00:00",
+        "message": "Wikipedia connected; fetching since 2026-10-31T10:00:00.000Z",
+        "updated_at": "2026-11-16T16:59:59.676568+00:00",
+        "delivery": {
+          "received": 443955,
+          "filtered": 430629,
+          "invalid": 0,
+          "queued": 13326,
+          "published": 13317,
+          "failed": 0
+        }
+      },
+      "supervisor": {
+        "state": "running",
+        "supervisor_pid": 6441,
+        "updated_at": "2026-11-16T17:00:14.953357+00:00",
+        "services": {
+          "dashboard": {
+            "pid": 6469,
+            "running": true
+          },
+          "bronze": {
+            "pid": 6511,
+            "running": true
+          },
+          "windows-5m": {
+            "pid": 6577,
+            "running": true
+          },
+          "windows-1h": {
+            "pid": 6737,
+            "running": true
+          },
+          "detection-5m": {
+            "pid": 6922,
+            "running": true
+          },
+          "detection-1h": {
+            "pid": 7396,
+            "running": true
+          },
+          "collector": {
+            "pid": 24459,
+            "running": true
+          }
+        },
+        "error": null
+      },
+      "receipt": {
+        "id": "08b46aeedb7b4014a5b3838ba1887235",
+        "action": "source",
+        "requested_at": "2026-11-16T16:57:23.568693+00:00",
+        "source": {
+          "mode": "since",
+          "since": "2026-10-31T10:00:00.000Z"
+        },
+        "message": "Wikipedia connected from 2026-10-31T10:00:00.000Z. Available upstream history is being captured; the connection continues live after catching up.",
+        "ok": true
+      },
+      "elapsed_source_seconds": 146.357378
+    },
+    {
+      "source": {
+        "mode": "since",
+        "since": "2026-11-04T10:00:00.000Z"
+      },
+      "collector": {
+        "since": "2026-11-04T10:00:00.000Z",
+        "state": "connected",
+        "queued_events": 284,
+        "queued_bytes": 365427,
+        "first_event": "2026-11-09T13:50:21+00:00",
+        "latest_event": "2026-11-09T13:55:05+00:00",
+        "started_at": "2026-11-16T17:01:00.454202+00:00",
+        "message": "Wikipedia connected; fetching since 2026-11-04T10:00:00.000Z",
+        "updated_at": "2026-11-16T17:01:27.231895+00:00",
+        "delivery": {
+          "received": 26715,
+          "filtered": 26431,
+          "invalid": 0,
+          "queued": 284,
+          "published": 282,
+          "failed": 0
+        }
+      },
+      "supervisor": {
+        "state": "running",
+        "supervisor_pid": 6441,
+        "updated_at": "2026-11-16T17:01:26.473865+00:00",
+        "services": {
+          "dashboard": {
+            "pid": 6469,
+            "running": true
+          },
+          "bronze": {
+            "pid": 6511,
+            "running": true
+          },
+          "windows-5m": {
+            "pid": 6577,
+            "running": true
+          },
+          "windows-1h": {
+            "pid": 6737,
+            "running": true
+          },
+          "detection-5m": {
+            "pid": 6922,
+            "running": true
+          },
+          "detection-1h": {
+            "pid": 7396,
+            "running": true
+          },
+          "collector": {
+            "pid": 28734,
+            "running": true
+          }
+        },
+        "error": null
+      },
+      "receipt": {
+        "id": "f6083d2b5d414257acc6fc0615fe92d0",
+        "action": "source",
+        "requested_at": "2026-11-16T17:00:42.428880+00:00",
+        "source": {
+          "mode": "since",
+          "since": "2026-11-04T10:00:00.000Z"
+        },
+        "message": "Wikipedia connected from 2026-11-04T10:00:00.000Z. Available upstream history is being captured; the connection continues live after catching up.",
+        "ok": true
+      },
+      "observed_at": "2026-11-16T17:01:27.398270+00:00"
+    }
+  ],
+  "stored_data_check": {
+    "event_day": "2026-11-09 UTC",
+    "unique_matching_edits": 13388,
+    "rows_fetched": 20582,
+    "duplicate_rows_removed": 7194,
+    "first_observed": "2026-11-09T13:50:11Z",
+    "last_observed": "2026-11-09T16:40:13Z"
+  },
+  "result": {
+    "active_capture_seconds_before_switch": 172.954,
+    "collector_replaced": true,
+    "other_service_pids_unchanged": true,
+    "same_first_matching_event": true,
+    "duplicate_live_collector_stopped": true,
+    "one_collector_verified_after_switch": true,
+    "ui_issue": "Header reports STALE / No recent Wikipedia events during a healthy, active historical catch-up.",
+    "chart_semantics": "Since changes ingestion source; Live charts keep the current wall-clock horizon. Past event dates are viewed in Stored activity.",
+    "final_ui": {
+      "selected_date": "04 Nov 2026",
+      "source_since": "2026-11-04T10:00:00.000Z",
+      "state": "connected",
+      "displayed_events": 2470,
+      "displayed_payload": "3.18 MB",
+      "first_event": "2026-11-09T13:50:21+00:00",
+      "latest_event": "2026-11-09T14:25:26+00:00",
+      "header": "STALE \u00b7 No recent Wikipedia events",
+      "console_collapsed": true
+    }
+  },
+  "final_supervisor": {
+    "state": "running",
+    "supervisor_pid": 6441,
+    "updated_at": "2026-11-16T17:03:58.627656+00:00",
+    "services": {
+      "dashboard": {
+        "pid": 6469,
+        "running": true
+      },
+      "bronze": {
+        "pid": 6511,
+        "running": true
+      },
+      "windows-5m": {
+        "pid": 6577,
+        "running": true
+      },
+      "windows-1h": {
+        "pid": 6737,
+        "running": true
+      },
+      "detection-5m": {
+        "pid": 6922,
+        "running": true
+      },
+      "detection-1h": {
+        "pid": 7396,
+        "running": true
+      },
+      "collector": {
+        "pid": 28734,
+        "running": true
+      }
+    },
+    "error": null
+  }
+}

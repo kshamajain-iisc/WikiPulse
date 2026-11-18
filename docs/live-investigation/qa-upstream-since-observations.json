@@ -1,0 +1,135 @@
+{
+  "requested_source": {
+    "mode": "since",
+    "since": "2026-11-16T16:38:00.000Z"
+  },
+  "progress": {
+    "since": "2026-11-16T16:38:00.000Z",
+    "state": "connected",
+    "queued_events": 235,
+    "queued_bytes": 298418,
+    "first_event": "2026-11-16T16:37:59+00:00",
+    "latest_event": "2026-11-16T16:41:49+00:00",
+    "started_at": "2026-11-16T16:40:08.151424+00:00",
+    "message": "Wikipedia connected; fetching since 2026-11-16T16:38:00.000Z",
+    "updated_at": "2026-11-16T16:41:51.011287+00:00",
+    "delivery": {
+      "received": 8086,
+      "filtered": 7851,
+      "invalid": 0,
+      "queued": 235,
+      "published": 234,
+      "failed": 0
+    }
+  },
+  "receipt": {
+    "id": "c21d70c9c2d04002aa8dcc29b6f89312",
+    "action": "source",
+    "requested_at": "2026-11-16T16:40:07.811291+00:00",
+    "source": {
+      "mode": "since",
+      "since": "2026-11-16T16:38:00.000Z"
+    },
+    "message": "Wikipedia connected from 2026-11-16T16:38:00.000Z. Available upstream history is being captured; the connection continues live after catching up.",
+    "ok": true
+  },
+  "collector_restarted": true,
+  "processing_pids_unchanged": true,
+  "all_services_running": true,
+  "committed_data": {
+    "committed_rows_from_source_run": 326,
+    "distinct_ids": 231,
+    "selected_committed_files": 30
+  },
+  "test_count": 98,
+  "older_capture": {
+    "requested_since": "2026-11-01T16:30:00.000Z",
+    "first_received_matching_event": "2026-11-09T13:50:21+00:00",
+    "observed_queued_events": 284,
+    "stored_day": "2026-11-09",
+    "stored_edits": 299,
+    "observed_days_mapping": [
+      "2026-11-16"
+    ],
+    "latest_stored_event": "2026-11-09T13:55:21Z",
+    "capture_coverage": "upstream retained history only; full requested period unverified",
+    "displayed_queued_payload": "365.43 KB"
+  },
+  "restored_live": {
+    "configuration": {
+      "mode": "live",
+      "since": null
+    },
+    "collector_progress": {
+      "since": null,
+      "state": "connected",
+      "queued_events": 46,
+      "queued_bytes": 61715,
+      "first_event": "2026-11-16T16:43:34+00:00",
+      "latest_event": "2026-11-16T16:44:08+00:00",
+      "started_at": "2026-11-16T16:43:32.442086+00:00",
+      "message": "Wikipedia connected; receiving live events",
+      "updated_at": "2026-11-16T16:44:13.837276+00:00",
+      "delivery": {
+        "received": 1706,
+        "filtered": 1660,
+        "invalid": 0,
+        "queued": 46,
+        "published": 45,
+        "failed": 0
+      }
+    }
+  },
+  "final_runtime": {
+    "state": "running",
+    "supervisor_pid": 6441,
+    "updated_at": "2026-11-16T16:51:17.173613+00:00",
+    "services": {
+      "dashboard": {
+        "pid": 6469,
+        "running": true
+      },
+      "collector": {
+        "pid": 6488,
+        "running": true
+      },
+      "bronze": {
+        "pid": 6511,
+        "running": true
+      },
+      "windows-5m": {
+        "pid": 6577,
+        "running": true
+      },
+      "windows-1h": {
+        "pid": 6737,
+        "running": true
+      },
+      "detection-5m": {
+        "pid": 6922,
+        "running": true
+      },
+      "detection-1h": {
+        "pid": 7396,
+        "running": true
+      }
+    },
+    "error": null
+  },
+  "final_source": {
+    "mode": "live",
+    "since": null
+  },
+  "browser": {
+    "live_default_on_reload": true,
+    "investigation_live_default": true,
+    "missing_timestamp_rejected": true,
+    "actual_source_switch": true,
+    "console_stayed_collapsed": true,
+    "time_input_visible_width_px": 108.46,
+    "time_wrapper_width_px": 110,
+    "horizontal_overflow": false,
+    "live_now_selected_at_finish": true
+  },
+  "test_result": "98 passed in 23.137 seconds"
+}

@@ -110,7 +110,7 @@ def render_dashboard(service, pathname, search, duration, view, title, start, en
     return page_module.render(data), status, options, navigation(pathname)
 
 
-def register_callbacks(app, service):
+def register_callbacks(app, service, activity_workspace=None):
     @app.callback(
         Output("page-body", "children"), Output("source-status", "children"),
         Output("article", "options"),
@@ -122,6 +122,9 @@ def register_callbacks(app, service):
     )
     def refresh_page(pathname, search, tick, duration, view, title, historical_range, replay_frame, replay_speed):
         path = pathname or "/"
+        if activity_workspace is not None and path in ("/", "/investigation"):
+            # These routes use their independent asynchronous serving boundary.
+            return [], "", []
         # Historical evidence is driven by its date controls; relationship and
         # health views change only on navigation. Ignore irrelevant global
         # controls and timer ticks so they cannot queue expensive Spark work.
@@ -166,7 +169,7 @@ def register_callbacks(app, service):
         # A slow query must finish before the timer can request another snapshot.
         # Keep the user's pause choice when the running callback finishes.
         live_route = pathname in (None, "/", "/investigation")
-        return bool(busy) or "pause" in (value or []) or view == "replay" or not live_route
+        return (activity_workspace is not None and live_route) or bool(busy) or "pause" in (value or []) or view == "replay" or not live_route
 
     @app.callback(
         Output("loading-banner", "style"),
@@ -175,6 +178,8 @@ def register_callbacks(app, service):
         Input("refresh-busy", "data"), Input("location", "pathname"), Input("view", "value"),
     )
     def loading_copy(busy, pathname, view):
+        if activity_workspace is not None and pathname in ("/", "/investigation"):
+            return {"display": "none"}, "Loading activity", "See the processing console for measured progress.", "backend-loading-pill"
         if view == "replay" and pathname in ("/", "/investigation"):
             title, description = "Selecting replay window", "Reading the stored activity around this replay point…"
         else:
@@ -354,6 +359,8 @@ def register_callbacks(app, service):
     )
     def toggle_top_controls(pathname):
         path = pathname or "/"
+        if activity_workspace is not None and path in ("/", "/investigation"):
+            return ({"display": "none"},) * 6
         if path in ("/", "/investigation"):
             return (
                 {"display": "flex"},

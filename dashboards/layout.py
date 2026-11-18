@@ -20,7 +20,8 @@ def navigation(pathname="/"):
             for path, number, label in ROUTES]
 
 
-def shell(default_view="live"):
+def shell(default_view="live", activity=False):
+    from dashboards.activity_ui import activity_shell
     return html.Div([
         dcc.Location(id="location", refresh="callback-nav"),
         # Poll live views often enough to feel live; static routes disable it.
@@ -105,6 +106,7 @@ def shell(default_view="live"):
                     dcc.Checklist(id="pause", options=[{"label": "Pause refresh", "value": "pause"}], value=[], className="pause-control"),
                 ], id="top-controls", className="controls"),
                 html.Div("Starting dashboard queries…", id="source-status", className="source-status", role="status"),
+                *([activity_shell()] if activity else []),
                 html.Div(id="page-body", tabIndex=-1),
                 html.Footer("WIKIPULSE  /  DATA ENGINEERING AT SCALE  ·  Evidence first. Live times shown in India Standard Time (IST)."),
             ], className="workspace"),

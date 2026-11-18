@@ -9,11 +9,13 @@ import requests
 from dotenv import load_dotenv
 
 try:
+    from .stream_source import CaptureProgress, collector_lock, normalize_since, stream_url
     from .kafka_common import (
         KAFKA_SERVERS, KAFKA_TOPIC, build_envelope, configure_logging,
         create_producer, get_event_id, is_valid_edit,
     )
 except ImportError:  # Support python src/collector.py as well as python -m.
+    from stream_source import CaptureProgress, collector_lock, normalize_since, stream_url
     from kafka_common import (
         KAFKA_SERVERS, KAFKA_TOPIC, build_envelope, configure_logging,
         create_producer, get_event_id, is_valid_edit,
@@ -80,7 +82,7 @@ def print_stats():
     )
 
 
-def publish_event(producer, event):
+def publish_event(producer, event, progress=None):
     event_id = get_event_id(event)
 
     record = build_envelope(event)
@@ -98,6 +100,8 @@ def publish_event(producer, event):
                 on_delivery=delivery_callback,
             )
             stats["queued"] += 1
+            if progress is not None:
+                progress.record(event, len(payload))
             producer.poll(0)
             return True
 
@@ -115,7 +119,7 @@ def publish_event(producer, event):
     return False
 
 
-def process_event(producer, event):
+def process_event(producer, event, progress=None):
     stats["received"] += 1
 
     if not isinstance(event, dict):
@@ -134,10 +138,10 @@ def process_event(producer, event):
         stats["invalid"] += 1
         return
 
-    return publish_event(producer, event)
+    return publish_event(producer, event, progress)
 
 
-def stream_events(producer):
+def stream_events(producer, since=None, progress=None):
     session = requests.Session()
     session.headers.update({
         "User-Agent": USER_AGENT,
@@ -156,20 +160,26 @@ def stream_events(producer):
             headers["Last-Event-ID"] = last_event_id
 
         try:
-            logger.info("Connecting to %s", STREAM_URL)
+            url = stream_url(STREAM_URL, None if last_event_id else since)
+            logger.info("Connecting to %s", url)
+            if progress:
+                progress.write("connecting", "Reconnecting from the last processed event" if last_event_id else "Connecting to Wikipedia", force=True)
 
             with session.get(
-                STREAM_URL,
+                url,
                 headers=headers,
                 stream=True,
                 timeout=(15, 90),
             ) as response:
                 response.raise_for_status()
                 logger.info("EventStreams connected")
+                if progress:
+                    progress.write("connected", "Wikipedia connected; fetching since " + since if since else "Wikipedia connected; receiving live events", force=True)
                 backoff = 2
 
                 data_lines = []
                 sse_id = None
+                sse_type = "message"
 
                 for line in response.iter_lines(
                     decode_unicode=True
@@ -187,7 +197,9 @@ def stream_events(producer):
                                 event = json.loads(
                                     "\n".join(data_lines)
                                 )
-                                published = process_event(producer, event)
+                                if sse_type == "error":
+                                    raise requests.RequestException("Wikipedia stream returned an error event")
+                                published = process_event(producer, event, progress)
                                 if published is False:
                                     raise RuntimeError("Kafka enqueue failed; reconnecting without advancing cursor")
 
@@ -195,6 +207,8 @@ def stream_events(producer):
                                 # and enqueueing the event.
                                 if sse_id is not None:
                                     last_event_id = sse_id
+                                if progress:
+                                    progress.write(counts=stats)
 
                             except (
                                 ValueError,
@@ -208,6 +222,7 @@ def stream_events(producer):
 
                         data_lines = []
                         sse_id = None
+                        sse_type = "message"
 
                     elif line.startswith("data:"):
                         data_lines.append(
@@ -216,6 +231,8 @@ def stream_events(producer):
 
                     elif line.startswith("id:"):
                         sse_id = line[3:].strip()
+                    elif line.startswith("event:"):
+                        sse_type = line[6:].strip()
 
                     if (
                         time.monotonic() - last_stats
@@ -226,11 +243,15 @@ def stream_events(producer):
                         last_stats = time.monotonic()
 
         except requests.RequestException as exc:
+            if progress:
+                progress.write("reconnecting", "Wikipedia connection interrupted; retrying from the last processed event", force=True)
             logger.warning(
                 "Stream connection error: %s", exc
             )
 
         except Exception:
+            if progress:
+                progress.write("reconnecting", "Capture interrupted; retrying without advancing the event cursor", force=True)
             logger.exception(
                 "Unexpected collector error"
             )
@@ -251,9 +272,20 @@ def stream_events(producer):
         )
 
     print_stats()
+    session.close()
+    if progress:
+        progress.write("stopped", "Wikipedia capture stopped", force=True, counts=stats)
 
 
 def main():
+    import argparse
+    parser = argparse.ArgumentParser(description="Capture Wikipedia events live or from an upstream timestamp")
+    parser.add_argument("--since", help="Historical start timestamp with timezone; omitted means live now")
+    args = parser.parse_args()
+    try:
+        since = normalize_since(args.since)
+    except ValueError as error:
+        parser.error(str(error))
     if (
         not USER_AGENT
         or "example.com" in USER_AGENT
@@ -262,13 +294,12 @@ def main():
             "Set a real WIKIMEDIA_USER_AGENT in .env"
         )
 
-    producer = create_producer()
-
-    logger.info("Starting WikiPulse collector")
-    logger.info("Kafka: %s", KAFKA_SERVERS)
-    logger.info("Topic: %s", TOPIC)
-
-    stream_events(producer)
+    with collector_lock(f"{KAFKA_SERVERS}/{TOPIC}"):
+        producer = create_producer()
+        logger.info("Starting WikiPulse collector")
+        logger.info("Kafka: %s", KAFKA_SERVERS)
+        logger.info("Topic: %s", TOPIC)
+        stream_events(producer, since, CaptureProgress(since))
 
 
 if __name__ == "__main__":
