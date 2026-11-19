@@ -68,6 +68,12 @@ def render(data):
             metric("FILTERED EVENTS", number(quality.get("invalid_records")), quality.get("filtered_note", "May include non-edit categories excluded from curated data")),
             metric("KAFKA → BRONZE LAG", number(data.get("lag")), "Records beyond last committed raw batch"),
         ], className="metric-grid"),
+        html.Div([
+            panel("Strong scaling & parallel speedup", "Fixed 14-day window + baseline join + scoring across worker cores",
+                  graph(charts.scaling_curve(data.get("strong_scaling", [])))),
+            panel("Streaming load vs. processing capacity", "Measured throughput across 1x, 10x, 50x, and 100x Wikipedia replay loads",
+                  graph(charts.recovery_and_load(data.get("load_tiers", [])))),
+        ], className="chart-grid"),
         panel("Streaming progress", "Actual Spark progress; unavailable until the updated jobs emit a batch",
               table(progress_rows, [("Stage", "stage"), ("State", "state"), ("Input rows/s", "input_rate"),
                     ("Processed rows/s", "processing_rate"), ("Batch ms", "duration"), ("Batch timestamp", "timestamp")])),
@@ -88,12 +94,6 @@ def render(data):
                       *([pill_row(m5_m6_pills)] if m5_m6_pills else []),
                       graph(charts.revert_risk_calibration(curve_rows)),
                   ])),
-        ], className="chart-grid"),
-        html.Div([
-            panel("Strong scaling & parallel speedup", "Fixed 14-day window + baseline join + scoring across worker cores",
-                  graph(charts.scaling_curve(data.get("strong_scaling", [])))),
-            panel("Streaming load vs. processing capacity", "Measured throughput across 1x, 10x, 50x, and 100x Wikipedia replay loads",
-                  graph(charts.recovery_and_load(data.get("load_tiers", [])))),
         ], className="chart-grid"),
         panel("Controlled stop/restart & backlog recovery", "Spark checkpoint recovery draining accumulated outage backlog with zero duplicate alerts",
               table(data.get("recovery_summary", []), [

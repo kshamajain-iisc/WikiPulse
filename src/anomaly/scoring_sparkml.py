@@ -525,7 +525,7 @@ def fit_and_score_spark_ml(
         for i in range(len(kmeans_feature_cols))
     ]
     dist_expr = F.sqrt(sum(sq_diff_terms[1:], sq_diff_terms[0]))
-    km_scored = km_scored.withColumn("f_centroid_distance", F.round(dist_expr, 4))
+    km_scored = km_scored.withColumn("f_centroid_distance", F.round(dist_expr, 4)).cache()
 
     # Stage 2: Assemble 9D feature vector (8 behavioral features + `f_centroid_distance`) for RandomForest
     rf_feature_cols = kmeans_feature_cols + ["f_centroid_distance"]
@@ -550,7 +550,7 @@ def fit_and_score_spark_ml(
 
     rf_prob_arr = vector_to_array(F.col("rf_prob"))
     rf_score_expr = F.coalesce(rf_prob_arr[1], F.lit(0.0)) * F.lit(100.0)
-    kmeans_score_expr = F.least(F.lit(100.0), F.lit(25.5) * F.log1p(F.col("f_centroid_distance")))
+    kmeans_score_expr = F.least(F.lit(100.0), F.lit(32.0) * F.log1p(F.col("f_centroid_distance")))
 
     scored_df = (
         scored_df.withColumn("kmeans_distance", F.col("f_centroid_distance"))
@@ -562,7 +562,7 @@ def fit_and_score_spark_ml(
                 F.when(F.col("edits_human") <= 0, F.lit(0.0)).otherwise(
                     F.least(
                         F.lit(100.0),
-                        F.lit(0.45) * F.col("kmeans_score") + F.lit(0.55) * F.col("rf_score"),
+                        F.lit(0.25) * F.col("kmeans_score") + F.lit(0.75) * F.col("rf_score"),
                     )
                 ),
                 2,

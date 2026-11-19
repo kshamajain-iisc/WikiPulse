@@ -26,8 +26,8 @@ services:
 
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
       KAFKA_LOG_RETENTION_HOURS: 168
-      KAFKA_HEAP_OPTS: "-Xmx384m -Xms256m"
-    mem_limit: 768m
+      KAFKA_HEAP_OPTS: "-Xmx768m -Xms512m"
+    mem_limit: 1536m
 
     volumes:
       - kafka_data:/var/lib/kafka/data
@@ -35,11 +35,11 @@ services:
     healthcheck:
       test:
         - CMD-SHELL
-        - /opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 >/dev/null 2>&1
-      interval: 10s
-      timeout: 10s
-      retries: 15
-      start_period: 20s
+        - KAFKA_HEAP_OPTS="-Xmx64m -Xms32m" /opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 >/dev/null 2>&1
+      interval: 30s
+      timeout: 15s
+      retries: 10
+      start_period: 30s
 
 volumes:
   kafka_data:

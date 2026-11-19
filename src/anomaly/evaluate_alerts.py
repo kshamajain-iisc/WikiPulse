@@ -324,15 +324,24 @@ def run_synthetic_injection_experiment(spark) -> dict:
     scored_ab = add_reasons_and_ids(apply_detectors_a_and_b_exprs(enriched))
 
     # Also score the 7 synthetic patterns with Detector C (Spark ML: KMeans(k=6) + f_centroid_distance + RandomForest)
-    # by calibrating the ML pipeline on a reference slice of real windows + synthetic windows
-    ref_5m = safe_read_parquet(spark, CURATED_TABLES["page_windows_5m"]).limit(6000)
-    ref_base = safe_read_parquet(spark, CURATED_TABLES["page_baselines"]).select("pageid", "avg_daily_pageviews")
+    # by calibrating the ML pipeline on a representative slice of real 5m + 1h windows + synthetic windows
+    ref_5m = safe_read_parquet(spark, CURATED_TABLES["page_windows_5m"]).filter("ns = 0")
+    ref_1h = safe_read_parquet(spark, CURATED_TABLES["page_windows_1h"]).filter("ns = 0")
+    ref_all = ref_5m.unionByName(ref_1h)
+    ref_bg = ref_all.sample(withReplacement=False, fraction=0.02, seed=42)
+    ref_pos = ref_all.filter(
+        "(edits_human >= 5 AND velocity_zscore >= 5.5 AND distinct_human_editors >= 3 AND gross_bytes >= 350) "
+        "OR (edits_human >= 5 AND velocity_zscore >= 7.5 AND distinct_human_editors >= 2 AND gross_bytes >= 4500) "
+        "OR (edits_human >= 6 AND distinct_human_editors >= 3 AND revert_ratio >= 0.30)"
+    )
+    ref_win = ref_bg.unionByName(ref_pos).dropDuplicates(["pageid", "window_start", "window_duration"])
     ref_enriched = (
-        ref_5m.join(ref_base, on="pageid", how="left")
+        ref_win.withColumn("avg_daily_pageviews", F.lit(None).cast("double"))
         .withColumn("daily_pageviews", F.lit(None).cast("double"))
     )
     ref_ab = add_reasons_and_ids(apply_detectors_a_and_b_exprs(ref_enriched))
-    combined_for_ml = ref_ab.unionByName(scored_ab, allowMissingColumns=True)
+    combined_for_ml = ref_ab.unionByName(scored_ab, allowMissingColumns=True).repartition(4).cache()
+    _ = combined_for_ml.count()
     scored_abc, _ = fit_and_score_spark_ml(combined_for_ml, keep_ml_Diagnostics=True)
 
     synth_titles = [
@@ -348,6 +357,7 @@ def run_synthetic_injection_experiment(spark) -> dict:
         r["title"]: r.asDict()
         for r in scored_abc.filter(F.col("title").isin(*synth_titles)).collect()
     }
+    combined_for_ml.unpersist()
 
     expected_specs = [
         ("SYNTH_BREAKING_NEWS_SURGE", True, "CONFIRMED_NEWS"),
@@ -437,11 +447,15 @@ def run_synthetic_injection_experiment(spark) -> dict:
             }
         )
 
+    c_diag = [
+        f"{p['pattern_title']}(flag={p['detector_c_spark_ml_flag']},score={p['spark_ml_score']},dist={p['centroid_distance']})"
+        for p in pattern_results
+    ]
     assert pos_detected_b == 5, f"Expected 5/5 positive synthetic patterns detected by B, got {pos_detected_b}"
-    assert pos_detected_c == 5, f"Expected 5/5 positive synthetic patterns detected by C, got {pos_detected_c}"
+    assert pos_detected_c == 5, f"Expected 5/5 positive synthetic patterns detected by C, got {pos_detected_c}: {c_diag}"
     assert pos_with_ge2_reasons == 5, f"Expected 5/5 positive alerts with >=2 reasons, got {pos_with_ge2_reasons}"
     assert neg_false_alerts_b == 0, f"Expected 0 negative control false alerts for B, got {neg_false_alerts_b}"
-    assert neg_false_alerts_c == 0, f"Expected 0 negative control false alerts for C, got {neg_false_alerts_c}"
+    assert neg_false_alerts_c == 0, f"Expected 0 negative control false alerts for C, got {neg_false_alerts_c}: {c_diag}"
 
     return {
         "positive_patterns_injected": 5,
