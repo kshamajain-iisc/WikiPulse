@@ -41,6 +41,7 @@ from pyspark.sql import functions as F
 from src.anomaly.scoring_sparkml import (
     add_reasons_and_ids,
     apply_detectors_a_and_b_exprs,
+    fit_and_score_spark_ml,
 )
 from src.anomaly.window_features import build_window_features_df
 from src.config.settings import (
@@ -320,8 +321,43 @@ def run_synthetic_injection_experiment(spark) -> dict:
         synth_baselines_df.select("pageid", "avg_daily_pageviews"), on="pageid", how="left"
     ).join(pv_df, on=["title", "day"], how="left")
 
-    scored = add_reasons_and_ids(apply_detectors_a_and_b_exprs(enriched))
-    rows = {r["title"]: r.asDict() for r in scored.collect()}
+    scored_ab = add_reasons_and_ids(apply_detectors_a_and_b_exprs(enriched))
+
+    # Also score the 7 synthetic patterns with Detector C (Spark ML: KMeans(k=6) + f_centroid_distance + RandomForest)
+    # by calibrating the ML pipeline on a representative slice of real 5m + 1h windows + synthetic windows
+    ref_5m = safe_read_parquet(spark, CURATED_TABLES["page_windows_5m"]).filter("ns = 0")
+    ref_1h = safe_read_parquet(spark, CURATED_TABLES["page_windows_1h"]).filter("ns = 0")
+    ref_all = ref_5m.unionByName(ref_1h)
+    ref_bg = ref_all.sample(withReplacement=False, fraction=0.02, seed=42)
+    ref_pos = ref_all.filter(
+        "(edits_human >= 5 AND velocity_zscore >= 5.5 AND distinct_human_editors >= 3 AND gross_bytes >= 350) "
+        "OR (edits_human >= 5 AND velocity_zscore >= 7.5 AND distinct_human_editors >= 2 AND gross_bytes >= 4500) "
+        "OR (edits_human >= 6 AND distinct_human_editors >= 3 AND revert_ratio >= 0.30)"
+    )
+    ref_win = ref_bg.unionByName(ref_pos).dropDuplicates(["pageid", "window_start", "window_duration"])
+    ref_enriched = (
+        ref_win.withColumn("avg_daily_pageviews", F.lit(None).cast("double"))
+        .withColumn("daily_pageviews", F.lit(None).cast("double"))
+    )
+    ref_ab = add_reasons_and_ids(apply_detectors_a_and_b_exprs(ref_enriched))
+    combined_for_ml = ref_ab.unionByName(scored_ab, allowMissingColumns=True).repartition(4).cache()
+    _ = combined_for_ml.count()
+    scored_abc, _ = fit_and_score_spark_ml(combined_for_ml, keep_ml_Diagnostics=True)
+
+    synth_titles = [
+        "SYNTH_BREAKING_NEWS_SURGE",
+        "SYNTH_DEVELOPING_EVENT_BURST",
+        "SYNTH_EDIT_WAR_CONTROVERSY",
+        "SYNTH_MAJOR_REWRITE_EXPANSION",
+        "SYNTH_QUIET_PAGE_EMERGING_SHIFT",
+        "CTRL_ROUTINE_BOT_SWEEP",
+        "CTRL_HYPERACTIVE_ROUTINE_CHATTER",
+    ]
+    rows = {
+        r["title"]: r.asDict()
+        for r in scored_abc.filter(F.col("title").isin(*synth_titles)).collect()
+    }
+    combined_for_ml.unpersist()
 
     expected_specs = [
         ("SYNTH_BREAKING_NEWS_SURGE", True, "CONFIRMED_NEWS"),
@@ -334,21 +370,28 @@ def run_synthetic_injection_experiment(spark) -> dict:
     ]
 
     pattern_results = []
-    pos_detected_b = 0
     pos_detected_a = 0
+    pos_detected_b = 0
+    pos_detected_c = 0
     pos_with_ge2_reasons = 0
+    neg_false_alerts_a = 0
     neg_false_alerts_b = 0
+    neg_false_alerts_c = 0
 
     for title, should_alert, expected_type in expected_specs:
         r = rows[title]
         det_a = bool(r["fixed_threshold_flag"])
         det_b = bool(r["historical_alert_flag"])
+        det_c = bool(r.get("spark_ml_alert_flag"))
         reasons = list(r["reasons"] or [])
         num_reasons = len(reasons)
         actual_type = r["alert_type"]
         contrib_map = {k: float(v) for k, v in (r["feature_contributions"] or {}).items()}
         contrib_sum = round(sum(contrib_map.values()), 2)
         hist_score = round(float(r["historical_score"]), 2)
+        ml_score = round(float(r.get("spark_ml_score") or 0.0), 2)
+        centroid_dist = round(float(r.get("f_centroid_distance") or r.get("kmeans_distance") or 0.0), 3)
+        km_cluster = int(r.get("kmeans_cluster") or 0)
 
         # Verify additive explainability: sum(feature_contributions) == historical_score (or capped at 100/48)
         expected_score_from_contrib = min(100.0, contrib_sum) if r["velocity_zscore"] >= 2.5 else min(48.0, contrib_sum)
@@ -361,15 +404,21 @@ def run_synthetic_injection_experiment(spark) -> dict:
             assert "+-" not in reason_str, f"Malformed z-score sign in reason: {reason_str}"
 
         if should_alert:
-            if det_b:
-                pos_detected_b += 1
             if det_a:
                 pos_detected_a += 1
+            if det_b:
+                pos_detected_b += 1
+            if det_c:
+                pos_detected_c += 1
             if det_b and num_reasons >= 2:
                 pos_with_ge2_reasons += 1
         else:
+            if det_a:
+                neg_false_alerts_a += 1
             if det_b:
                 neg_false_alerts_b += 1
+            if det_c:
+                neg_false_alerts_c += 1
 
         pattern_results.append(
             {
@@ -379,7 +428,11 @@ def run_synthetic_injection_experiment(spark) -> dict:
                 "actual_alert_type": actual_type if det_b else "NONE",
                 "detector_a_fixed_flag": det_a,
                 "detector_b_historical_flag": det_b,
+                "detector_c_spark_ml_flag": det_c,
                 "historical_score": hist_score,
+                "spark_ml_score": ml_score,
+                "centroid_distance": centroid_dist,
+                "kmeans_cluster": km_cluster,
                 "feature_contributions_sum": contrib_sum,
                 "velocity_zscore": float(r["velocity_zscore"]),
                 "editor_surge_ratio": float(r["editor_surge_ratio"]),
@@ -389,21 +442,31 @@ def run_synthetic_injection_experiment(spark) -> dict:
                 "reasons": reasons,
                 "feature_contributions": contrib_map,
                 "passed_verification": (det_b == should_alert)
+                and (det_c == should_alert)
                 and (not should_alert or (num_reasons >= 2 and actual_type == expected_type)),
             }
         )
 
-    assert pos_detected_b == 5, f"Expected 5/5 positive synthetic patterns detected, got {pos_detected_b}"
+    c_diag = [
+        f"{p['pattern_title']}(flag={p['detector_c_spark_ml_flag']},score={p['spark_ml_score']},dist={p['centroid_distance']})"
+        for p in pattern_results
+    ]
+    assert pos_detected_b == 5, f"Expected 5/5 positive synthetic patterns detected by B, got {pos_detected_b}"
+    assert pos_detected_c == 5, f"Expected 5/5 positive synthetic patterns detected by C, got {pos_detected_c}: {c_diag}"
     assert pos_with_ge2_reasons == 5, f"Expected 5/5 positive alerts with >=2 reasons, got {pos_with_ge2_reasons}"
-    assert neg_false_alerts_b == 0, f"Expected 0 negative control false alerts, got {neg_false_alerts_b}"
+    assert neg_false_alerts_b == 0, f"Expected 0 negative control false alerts for B, got {neg_false_alerts_b}"
+    assert neg_false_alerts_c == 0, f"Expected 0 negative control false alerts for C, got {neg_false_alerts_c}: {c_diag}"
 
     return {
         "positive_patterns_injected": 5,
         "negative_controls_injected": 2,
-        "detector_b_positive_recall": f"{pos_detected_b}/5 (100.0%)",
         "detector_a_positive_recall": f"{pos_detected_a}/5 ({pos_detected_a * 20.0:.1f}%)",
-        "alerts_with_ge2_reasons": f"{pos_with_ge2_reasons}/5 (100.0%)",
+        "detector_b_positive_recall": f"{pos_detected_b}/5 (100.0%)",
+        "detector_c_positive_recall": f"{pos_detected_c}/5 ({pos_detected_c * 20.0:.1f}%)",
+        "detector_a_negative_control_false_alerts": neg_false_alerts_a,
         "detector_b_negative_control_false_alerts": neg_false_alerts_b,
+        "detector_c_negative_control_false_alerts": neg_false_alerts_c,
+        "alerts_with_ge2_reasons": f"{pos_with_ge2_reasons}/5 (100.0%)",
         "pattern_details": pattern_results,
     }
 
@@ -503,9 +566,170 @@ def evaluate_detector_false_alert_rates(spark) -> dict:
     )
     sample_200.unpersist()
 
+    # Threshold Calibration / Precision-Recall Tradeoff Curve across score thresholds (50..95)
+    # and Detector B vs Detector C Score Correlation / Disagreement analysis
+    eval_rows = [
+        r.asDict()
+        for r in evaluated.select(
+            "alert_id",
+            "title",
+            "window_start",
+            "window_duration",
+            "alert_type",
+            "historical_score",
+            "spark_ml_score",
+            "fixed_threshold_flag",
+            "historical_alert_flag",
+            "spark_ml_alert_flag",
+            "pageview_corroborated",
+            "is_true_knowledge_shift",
+            "is_naive_fixed_true_news",
+            "velocity_zscore",
+            "edits_human",
+            "distinct_human_editors",
+            "gross_bytes",
+            "revert_ratio",
+        ).collect()
+    ]
+
+    total_true_shifts = max(1, sum(1 for r in eval_rows if r.get("is_true_knowledge_shift")))
+    thresholds = [50, 55, 60, 65, 68, 70, 75, 80, 85, 90, 95]
+    det_b_curve = []
+    det_c_curve = []
+
+    for t_val in thresholds:
+        # Detector B at threshold t_val
+        b_flagged = [r for r in eval_rows if float(r.get("historical_score") or 0.0) >= t_val]
+        b_tp = sum(1 for r in b_flagged if r.get("is_true_knowledge_shift"))
+        b_fa = len(b_flagged) - b_tp
+        b_prec = round(100.0 * b_tp / max(1, len(b_flagged)), 2)
+        b_rec = round(100.0 * b_tp / total_true_shifts, 2)
+        b_f1 = round(2 * b_prec * b_rec / max(0.01, b_prec + b_rec), 2)
+        det_b_curve.append({
+            "threshold": t_val,
+            "flagged": len(b_flagged),
+            "true_positives": b_tp,
+            "false_alerts": b_fa,
+            "precision_pct": b_prec,
+            "recall_pct": b_rec,
+            "f1_pct": b_f1,
+            "false_alert_rate_pct": round(100.0 - b_prec, 2) if b_flagged else 0.0,
+        })
+
+        # Detector C (Spark ML) at threshold t_val
+        c_flagged = [r for r in eval_rows if float(r.get("spark_ml_score") or 0.0) >= t_val]
+        c_tp = sum(1 for r in c_flagged if r.get("is_true_knowledge_shift"))
+        c_fa = len(c_flagged) - c_tp
+        c_prec = round(100.0 * c_tp / max(1, len(c_flagged)), 2)
+        c_rec = round(100.0 * c_tp / total_true_shifts, 2)
+        c_f1 = round(2 * c_prec * c_rec / max(0.01, c_prec + c_rec), 2)
+        det_c_curve.append({
+            "threshold": t_val,
+            "flagged": len(c_flagged),
+            "true_positives": c_tp,
+            "false_alerts": c_fa,
+            "precision_pct": c_prec,
+            "recall_pct": c_rec,
+            "f1_pct": c_f1,
+            "false_alert_rate_pct": round(100.0 - c_prec, 2) if c_flagged else 0.0,
+        })
+
+    # Detector A fixed baseline reference
+    a_rec = round(100.0 * full_det_a_any["verified_true_shifts"] / total_true_shifts, 2)
+    a_prec = full_det_a_any["precision_pct"]
+    a_f1 = round(2 * a_prec * a_rec / max(0.01, a_prec + a_rec), 2)
+
+    # Detector B vs Detector C Score Correlation & 3-Detector Overlap / Disagreement
+    n_rows = max(1, len(eval_rows))
+    mean_b = sum(float(r.get("historical_score") or 0.0) for r in eval_rows) / n_rows
+    mean_c = sum(float(r.get("spark_ml_score") or 0.0) for r in eval_rows) / n_rows
+    cov_bc = sum((float(r.get("historical_score") or 0.0) - mean_b) * (float(r.get("spark_ml_score") or 0.0) - mean_c) for r in eval_rows)
+    var_b = sum((float(r.get("historical_score") or 0.0) - mean_b) ** 2 for r in eval_rows)
+    var_c = sum((float(r.get("spark_ml_score") or 0.0) - mean_c) ** 2 for r in eval_rows)
+    pearson_r = round(cov_bc / max(1e-9, (var_b * var_c) ** 0.5), 4)
+    mean_abs_gap = round(
+        sum(abs(float(r.get("historical_score") or 0.0) - float(r.get("spark_ml_score") or 0.0)) for r in eval_rows) / n_rows,
+        2,
+    )
+
+    venn_counts = {
+        "All-3 Consensus (A ∩ B ∩ C)": 0,
+        "B ∩ C Only (Quiet-Page Shifts Missed by A)": 0,
+        "A ∩ B Only (High-Threshold Rule + Hist)": 0,
+        "A ∩ C Only (Fixed Rule + Spark ML)": 0,
+        "Detector B Only (Explainable Niche Surge)": 0,
+        "Detector C Only (ML Centroid Outlier)": 0,
+        "Detector A Only (Hyperactive Routine Noise)": 0,
+    }
+    scatter_points = []
+    disagreement_examples = []
+
+    for r in sorted(eval_rows, key=lambda x: abs(float(x.get("historical_score") or 0) - float(x.get("spark_ml_score") or 0)), reverse=True):
+        fa = bool(r.get("fixed_threshold_flag"))
+        fb = bool(r.get("historical_alert_flag"))
+        fc = bool(r.get("spark_ml_alert_flag"))
+        if fa and fb and fc:
+            cohort = "All-3 Consensus (A ∩ B ∩ C)"
+        elif (not fa) and fb and fc:
+            cohort = "B ∩ C Only (Quiet-Page Shifts Missed by A)"
+        elif fa and fb and (not fc):
+            cohort = "A ∩ B Only (High-Threshold Rule + Hist)"
+        elif fa and (not fb) and fc:
+            cohort = "A ∩ C Only (Fixed Rule + Spark ML)"
+        elif (not fa) and fb and (not fc):
+            cohort = "Detector B Only (Explainable Niche Surge)"
+        elif (not fa) and (not fb) and fc:
+            cohort = "Detector C Only (ML Centroid Outlier)"
+        else:
+            cohort = "Detector A Only (Hyperactive Routine Noise)"
+        venn_counts[cohort] = venn_counts.get(cohort, 0) + 1
+
+        hs = round(float(r.get("historical_score") or 0.0), 2)
+        ms = round(float(r.get("spark_ml_score") or 0.0), 2)
+        gap = round(hs - ms, 2)
+        pt_item = {
+            "alert_id": r.get("alert_id"),
+            "title": r.get("title"),
+            "window_duration": r.get("window_duration"),
+            "alert_type": r.get("alert_type"),
+            "historical_score": hs,
+            "spark_ml_score": ms,
+            "score_gap": gap,
+            "agreement_cohort": cohort,
+            "fixed_threshold_flag": fa,
+            "historical_alert_flag": fb,
+            "spark_ml_alert_flag": fc,
+            "velocity_zscore": round(float(r.get("velocity_zscore") or 0.0), 2),
+            "edits_human": int(r.get("edits_human") or 0),
+            "distinct_human_editors": int(r.get("distinct_human_editors") or 0),
+            "revert_ratio": round(float(r.get("revert_ratio") or 0.0), 3),
+        }
+        scatter_points.append(pt_item)
+        if cohort != "All-3 Consensus (A ∩ B ∩ C)" and len(disagreement_examples) < 25:
+            disagreement_examples.append(pt_item)
+
     return {
         "full_evaluation_comparison": [full_det_a_naive, full_det_a_any, full_det_b, full_det_c],
         "reviewed_200_window_sample_audit": [sample_det_a, sample_det_b, sample_det_c],
+        "threshold_calibration_curve": {
+            "thresholds": thresholds,
+            "total_true_shifts": total_true_shifts,
+            "detector_b_curve": det_b_curve,
+            "detector_c_curve": det_c_curve,
+            "detector_a_reference": {
+                "precision_pct": a_prec,
+                "recall_pct": a_rec,
+                "f1_pct": a_f1,
+                "false_alert_rate_pct": full_det_a_any["false_alert_rate_pct"],
+            },
+        },
+        "detector_correlation_and_disagreement": {
+            "pearson_r": pearson_r,
+            "mean_abs_score_diff": mean_abs_gap,
+            "venn_3_detector_overlap": venn_counts,
+            "scatter_points": scatter_points[:220],
+            "disagreement_examples": disagreement_examples[:20],
+        },
         "key_finding": (
             f"Detector B reduces the false-alert rate from {full_det_a_naive['false_alert_rate_pct']}% "
             f"(Detector A naive fixed threshold) to {full_det_b['false_alert_rate_pct']}% by normalizing "
@@ -650,16 +874,16 @@ def main() -> int:
     # 1. Controlled Synthetic Pattern Injection
     print("\n[Test 1] Running Controlled Synthetic Knowledge-Shift Pattern Injection (5 Positive + 2 Negative Controls)...")
     synth_res = run_synthetic_injection_experiment(spark)
-    print(f"  ✓ Detector B Positive Recall              : {synth_res['detector_b_positive_recall']}")
-    print(f"  ✓ Detector A Positive Recall (Comparison) : {synth_res['detector_a_positive_recall']}")
+    print(f"  ✓ Detector A Positive Recall (Fixed Rule) : {synth_res['detector_a_positive_recall']} (false_alerts={synth_res['detector_a_negative_control_false_alerts']})")
+    print(f"  ✓ Detector B Positive Recall (Historical) : {synth_res['detector_b_positive_recall']} (false_alerts={synth_res['detector_b_negative_control_false_alerts']})")
+    print(f"  ✓ Detector C Positive Recall (Spark ML)   : {synth_res['detector_c_positive_recall']} (false_alerts={synth_res['detector_c_negative_control_false_alerts']})")
     print(f"  ✓ Alerts with >= 2 Explainable Reasons    : {synth_res['alerts_with_ge2_reasons']}")
-    print(f"  ✓ Detector B Negative Control False Alerts: {synth_res['detector_b_negative_control_false_alerts']}")
     for p in synth_res["pattern_details"]:
         status = "PASS" if p["passed_verification"] else "FAIL"
         print(
             f"    [{status}] {p['pattern_title']:<34} | DetA={str(p['detector_a_fixed_flag']):<5} "
-            f"| DetB={str(p['detector_b_historical_flag']):<5} (score={p['historical_score']:>5.1f}, "
-            f"contrib_sum={p['feature_contributions_sum']:>5.1f}, type={p['actual_alert_type']}, reasons={p['reasons_count']})"
+            f"| DetB={str(p['detector_b_historical_flag']):<5} ({p['historical_score']:>5.1f}) "
+            f"| DetC={str(p['detector_c_spark_ml_flag']):<5} ({p['spark_ml_score']:>5.1f}, dist={p['centroid_distance']:.2f})"
         )
 
     # 2. Detector Comparison & False-Alert Rate Audit
@@ -692,7 +916,9 @@ def main() -> int:
 
     full_eval = {
         "experiment_2_synthetic_pattern_injection": synth_res,
+        "experiment_3_threshold_calibration": false_alert_res["threshold_calibration_curve"],
         "experiment_4_detector_false_alert_comparison": false_alert_res,
+        "experiment_5_detector_correlation_and_disagreement": false_alert_res["detector_correlation_and_disagreement"],
         "metric_4_replay_idempotency": replay_res,
         "milestones_1_4_5_curated_lake_audit": lake_res,
         "total_evaluation_runtime_sec": round(time.time() - t0, 2),

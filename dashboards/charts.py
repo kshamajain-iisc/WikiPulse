@@ -5,11 +5,12 @@ from datetime import timedelta
 
 import plotly.graph_objects as go
 
-from dashboards.time_utils import to_india_wall_time
+from dashboards.time_utils import format_india_time, to_india_wall_time
 
 GREEN = "#536dfe"
 BLUE = "#13a8d4"
 AMBER = "#e69a35"
+CORAL = "#b63a2b"
 INK = "#25385f"
 
 def _india_range(time_range):
@@ -46,17 +47,41 @@ def _india_hover_labels(rows, key):
 
 
 def style(figure, height=300):
+    existing_hovermode = figure.layout.hovermode
+    existing_margin = figure.layout.margin.to_plotly_json() if figure.layout.margin else {}
+    existing_legend = figure.layout.legend.to_plotly_json() if figure.layout.legend else {}
+
+    default_margin = dict(l=16, r=20, t=44, b=24)
+    default_margin.update({k: v for k, v in existing_margin.items() if v is not None})
+
+    default_legend = dict(
+        orientation="h",
+        y=1.02,
+        yanchor="bottom",
+        x=0,
+        xanchor="left",
+        font=dict(size=12),
+    )
+    default_legend.update({k: v for k, v in existing_legend.items() if v is not None})
+
     figure.update_layout(
-        template="plotly_white", height=height,
-        margin=dict(l=12, r=16, t=22, b=12),
-        font=dict(family="Arial, sans-serif", size=13, color="#66758d"),
-        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-        legend=dict(orientation="h", y=1.16, x=0),
-        hovermode="x unified",
+        template="plotly_white",
+        height=height,
+        margin=default_margin,
+        font=dict(family="Arial, sans-serif", size=12.5, color="#66758d"),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        legend=default_legend,
+        hovermode=existing_hovermode or "x unified",
+        hoverlabel=dict(
+            bgcolor="rgba(255, 255, 255, 0.96)",
+            bordercolor="#cbd5e1",
+            font=dict(size=12, color="#1e293b"),
+        ),
         colorway=[GREEN, BLUE, AMBER],
     )
-    figure.update_xaxes(showgrid=False, zeroline=False)
-    figure.update_yaxes(gridcolor="#e5eaf3", zeroline=False)
+    figure.update_xaxes(showgrid=False, zeroline=False, automargin=True)
+    figure.update_yaxes(gridcolor="#e5eaf3", zeroline=False, automargin=True)
     return figure
 
 
@@ -146,9 +171,19 @@ def baseline_comparison(rows, time_range=None):
         return empty("No matching historical baseline for these windows")
     rows = sorted(rows, key=lambda row: row["window_start"])
     figure = go.Figure()
+    x_vals = [to_india_wall_time(r["window_start"]) for r in rows]
     for label, key in (("Observed human edits", "edits_human"), ("Historical mean", "avg_edits_human")):
-        figure.add_trace(go.Scatter(x=[to_india_wall_time(r["window_start"]) for r in rows], y=[r.get(key) for r in rows],
+        figure.add_trace(go.Scatter(x=x_vals, y=[r.get(key) for r in rows],
                                    name=label, mode="lines+markers"))
+    if any(r.get("std_edits_human") is not None and r.get("avg_edits_human") is not None for r in rows):
+        upper_band = [
+            round((r.get("avg_edits_human") or 0) + 2.0 * (r.get("std_edits_human") or 0), 2)
+            for r in rows
+        ]
+        figure.add_trace(go.Scatter(
+            x=x_vals, y=upper_band, name="Baseline μ + 2σ",
+            mode="lines", line=dict(color=AMBER, width=1.8, dash="dash"),
+        ))
     _india_axis(figure, time_range)
     labels = _india_hover_labels(rows, "window_start")
     for trace in figure.data:
@@ -164,16 +199,25 @@ def relationship_graph(edges):
     positions = {name: (math.cos(2 * math.pi * i / len(names)), math.sin(2 * math.pi * i / len(names)))
                  for i, name in enumerate(names)}
     x, y = [], []
+    co_x, co_y = [], []
     for edge in edges:
         source, target = positions.get(edge["source_title"]), positions.get(edge["target_title"])
         if source and target:
-            x.extend([source[0], target[0], None])
-            y.extend([source[1], target[1], None])
-    figure = go.Figure(go.Scatter(x=x, y=y, mode="lines", line=dict(color="#b7c4d9", width=1), hoverinfo="skip"))
+            if edge.get("co_edited_in_window"):
+                co_x.extend([source[0], target[0], None])
+                co_y.extend([source[1], target[1], None])
+            else:
+                x.extend([source[0], target[0], None])
+                y.extend([source[1], target[1], None])
+    figure = go.Figure(go.Scatter(x=x, y=y, mode="lines", line=dict(color="#b7c4d9", width=1),
+                                  name="Wiki link", hoverinfo="skip"))
+    if co_x:
+        figure.add_trace(go.Scatter(x=co_x, y=co_y, mode="lines", line=dict(color=AMBER, width=2.2),
+                                    name="Co-edited spillover", hoverinfo="skip"))
     figure.add_trace(go.Scatter(x=[positions[n][0] for n in names], y=[positions[n][1] for n in names],
                                text=names, mode="markers", marker=dict(size=14, color=GREEN),
-                               hovertemplate="%{text}<extra></extra>"))
-    figure.update_layout(showlegend=False, hovermode="closest")
+                               name="Article", hovertemplate="%{text}<extra></extra>"))
+    figure.update_layout(showlegend=bool(co_x), hovermode="closest")
     figure.update_xaxes(visible=False)
     figure.update_yaxes(visible=False, scaleanchor="x")
     return style(figure, 380)
@@ -242,3 +286,994 @@ def recovery_and_load(rows):
     ))
     figure.update_layout(barmode="group")
     return style(figure)
+
+
+def churn_rankings(rows):
+    """Top 10 articles by gross byte churn and rewriting volume (Milestone 4)."""
+    if not rows:
+        return empty("No churn rankings available yet")
+    top = sorted(rows, key=lambda r: r.get("gross_bytes") or 0, reverse=True)[:10][::-1]
+    labels = [r["title"] if len(r["title"]) <= 28 else r["title"][:27] + "…" for r in top]
+    y_idx = list(range(len(top)))
+    figure = go.Figure()
+    figure.add_trace(go.Bar(
+        x=[r.get("gross_bytes") or 0 for r in top], y=y_idx, orientation="h",
+        name="Gross churn (B)", marker_color=BLUE, customdata=[r["title"] for r in top],
+        hovertemplate="%{customdata}<br>Gross churn: %{x:,} B<extra></extra>",
+    ))
+    if any(r.get("rewriting_bytes") is not None for r in top):
+        figure.add_trace(go.Bar(
+            x=[r.get("rewriting_bytes") or 0 for r in top], y=y_idx, orientation="h",
+            name="Rewriting (B)", marker_color=AMBER, customdata=[r["title"] for r in top],
+            hovertemplate="%{customdata}<br>Rewriting: %{x:,} B<extra></extra>",
+        ))
+    figure.update_layout(barmode="group")
+    figure.update_yaxes(automargin=True, tickfont=dict(size=11), tickmode="array",
+                        tickvals=y_idx, ticktext=labels)
+    return style(figure, 340)
+
+
+def detector_comparison(summary):
+    """Compare Detector A (Fixed), B (Historical), C (Spark ML), Consensus & Pageviews (Milestone 5)."""
+    if not summary:
+        return empty("No detector comparison counts available yet")
+    labels = ["Fixed (A)", "Historical (B)", "Spark ML (C)", "All-3 Consensus", "Pageview Corrob."]
+    values = [
+        summary.get("detector_a_fixed_count", 0),
+        summary.get("detector_b_historical_count", 0),
+        summary.get("detector_c_spark_ml_count", 0),
+        summary.get("all_three_consensus_count", 0),
+        summary.get("pageview_corroborated_count", 0),
+    ]
+    if not any(values):
+        return empty("No alerts triggered in the selected scope")
+    figure = go.Figure(go.Bar(
+        x=labels, y=values,
+        marker_color=[AMBER, GREEN, BLUE, INK, "#06a6be"],
+        hovertemplate="%{x}: %{y:,} alerts<extra></extra>",
+    ))
+    return style(figure)
+
+
+def revert_risk_calibration(curve_rows):
+    """Precision, Recall, and F1 vs Lift Wing threshold (Milestone 6)."""
+    if not curve_rows:
+        return empty("Revert-risk calibration curve appears after running Milestone 6 evaluation")
+    thresholds = [r.get("threshold") for r in curve_rows]
+    figure = go.Figure()
+    for label, key, color in (
+        ("Precision (%)", "precision_pct", GREEN),
+        ("Recall (%)", "recall_pct", BLUE),
+        ("F1 (%)", "f1_pct", AMBER),
+    ):
+        figure.add_trace(go.Scatter(
+            x=thresholds, y=[r.get(key) for r in curve_rows],
+            name=label, mode="lines+markers", line=dict(color=color, width=2.5),
+        ))
+    figure.add_vline(x=0.8, line_dash="dash", line_color="#98a4b7", annotation_text="0.80 target")
+    figure.update_xaxes(title_text="ML Revert Risk Threshold")
+    figure.update_yaxes(title_text="Score (%)", range=[0, 105])
+    return style(figure)
+
+
+def m4_engine_and_latency(m4_data):
+    """Compare RDD vs DataFrame runtime and Raw JSONL.gz vs Parquet query latency (Milestone 4)."""
+    if not m4_data:
+        return empty("Milestone 4 engine benchmarks appear after running rankings_benchmark.py")
+    rdd_bench = m4_data.get("rdd_vs_dataframe_benchmark", {})
+    lat_bench = m4_data.get("query_latency_benchmark", {})
+    labels = [
+        "RDD (7d agg)",
+        "DataFrame (7d agg)",
+        "Raw JSONL.gz (1d)",
+        "Parquet rankings",
+        "Parquet 46d series",
+    ]
+    values = [
+        rdd_bench.get("rdd_runtime_sec", 0),
+        rdd_bench.get("dataframe_runtime_sec", 0),
+        lat_bench.get("raw_jsonl_gz_1day_top20_sec", 0),
+        lat_bench.get("stored_parquet_rankings_top20_sec", 0),
+        lat_bench.get("stored_parquet_46day_churn_series_sec", 0),
+    ]
+    if not any(values):
+        return empty("Milestone 4 engine benchmarks appear after running rankings_benchmark.py")
+    figure = go.Figure(go.Bar(
+        x=labels, y=values,
+        marker_color=[AMBER, GREEN, AMBER, BLUE, GREEN],
+        hovertemplate="%{x}: %{y:.3f}s<extra></extra>",
+    ))
+    figure.add_hline(y=2.0, line_dash="dash", line_color="#d94b6a", annotation_text="2.0s SLA")
+    figure.update_yaxes(title_text="Seconds")
+    return style(figure)
+
+
+def rf_feature_importances(importances):
+    """Horizontal bar chart of Random Forest feature importances learned by Spark ML."""
+    if not importances:
+        return empty("Random Forest feature importances appear after running Milestone 5 Spark ML")
+    pretty = {
+        "f_distinct_editors": "Distinct human editors",
+        "f_edits_human": "Human edit count",
+        "f_editor_surge": "Editor surge ratio",
+        "f_log_gross_bytes": "Log gross byte churn",
+        "f_velocity_z": "Edit velocity z-score",
+        "f_revert_ratio": "Revert ratio",
+        "f_log_rewriting_bytes": "Log rewriting bytes",
+        "f_bot_share": "Bot edit share",
+    }
+    items = sorted(importances.items(), key=lambda kv: kv[1])
+    labels = [pretty.get(k, k) for k, _ in items]
+    values = [round(v * 100, 2) for _, v in items]
+    figure = go.Figure(go.Bar(
+        x=values, y=labels, orientation="h", marker_color=GREEN,
+        hovertemplate="%{y}: %{x:.2f}%<extra></extra>",
+    ))
+    figure.update_layout(showlegend=False, hovermode="closest", margin=dict(l=16, r=20, t=16, b=32))
+    figure.update_xaxes(title_text="Importance (%)")
+    figure.update_yaxes(automargin=True)
+    return style(figure, 320)
+
+
+def kmeans_clusters(cluster_sizes, normal_cluster_id=None, cluster_profiles=None):
+    """Bar chart of KMeans (k=6) window cluster distribution and centroid distances learned by Spark ML."""
+    if not cluster_sizes and not cluster_profiles:
+        return empty("KMeans cluster distribution appears after running Milestone 5 Spark ML")
+    if cluster_profiles:
+        labels = [
+            f"#{p.get('cluster_id')} {p.get('archetype', '')[:22]}"
+            for p in cluster_profiles
+        ]
+        counts = [int(p.get("window_count") or 0) for p in cluster_profiles]
+        dists = [float(p.get("centroid_distance_from_normal") or 0.0) for p in cluster_profiles]
+        colors = [
+            BLUE if str(p.get("cluster_id")) == str(normal_cluster_id)
+            else CORAL if float(p.get("centroid_distance_from_normal") or 0.0) >= 3.5
+            else GREEN
+            for p in cluster_profiles
+        ]
+        figure = go.Figure()
+        figure.add_trace(go.Bar(
+            x=labels,
+            y=counts,
+            name="Window count",
+            marker_color=colors,
+            customdata=[
+                f"#{p.get('cluster_id')} {p.get('archetype')}<br>"
+                f"Share: {p.get('share_pct', 0):.2f}% · Centroid dist: {p.get('centroid_distance_from_normal', 0):.3f}<br>"
+                f"Avg human edits: {p.get('avg_edits_human', 0):.2f} · Avg editors: {p.get('avg_distinct_editors', 0):.2f}<br>"
+                f"Avg revert ratio: {float(p.get('avg_revert_ratio', 0)) * 100:.1f}% · Avg bot share: {float(p.get('avg_bot_share', 0)) * 100:.1f}%"
+                for p in cluster_profiles
+            ],
+            hovertemplate="%{customdata}<br>Windows: %{y:,}<extra></extra>",
+        ))
+        figure.add_trace(go.Scatter(
+            x=labels,
+            y=dists,
+            yaxis="y2",
+            name="Centroid distance from normal",
+            mode="lines+markers",
+            line=dict(color=AMBER, width=2.5),
+            marker=dict(size=8, color=AMBER),
+            hovertemplate="%{x}<br>Centroid distance: %{y:.3f}<extra></extra>",
+        ))
+        figure.update_layout(
+            hovermode="closest",
+            margin=dict(l=16, r=24, t=48, b=28),
+            legend=dict(orientation="h", y=1.03, yanchor="bottom", x=0, xanchor="left"),
+            yaxis=dict(title="Page windows"),
+            yaxis2=dict(title="Centroid distance (L2)", overlaying="y", side="right", showgrid=False),
+        )
+        figure.update_xaxes(tickangle=-15, tickfont=dict(size=11))
+        return style(figure, 350)
+
+    items = sorted(cluster_sizes.items(), key=lambda kv: int(kv[0]))
+    labels = [
+        f"Cluster {cid} (baseline)" if str(cid) == str(normal_cluster_id) else f"Cluster {cid}"
+        for cid, _ in items
+    ]
+    colors = [
+        BLUE if str(cid) == str(normal_cluster_id) else AMBER if count < 2000 else GREEN
+        for cid, count in items
+    ]
+    figure = go.Figure(go.Bar(
+        x=labels, y=[count for _, count in items], marker_color=colors,
+        hovertemplate="%{x}: %{y:,} windows<extra></extra>",
+    ))
+    figure.update_yaxes(title_text="Page windows")
+    return style(figure, 320)
+
+
+def kmeans_centroid_heatmap(cluster_profiles):
+    """Heatmap of standardized 8D centroid feature coordinates across the KMeans behavioral clusters."""
+    if not cluster_profiles:
+        return empty("KMeans centroid feature profiles appear after running Milestone 5 Spark ML")
+    feat_keys = [
+        ("f_edits_human", "Human Edits"),
+        ("f_distinct_editors", "Distinct Editors"),
+        ("f_log_gross_bytes", "Gross Bytes"),
+        ("f_log_rewriting_bytes", "Rewriting Bytes"),
+        ("f_revert_ratio", "Revert Ratio"),
+        ("f_bot_share", "Bot Share"),
+        ("f_velocity_z", "Velocity Z"),
+        ("f_editor_surge", "Editor Surge"),
+    ]
+    y_labels = [f"#{p.get('cluster_id')} {p.get('archetype', '')}" for p in cluster_profiles]
+    x_labels = [label for _, label in feat_keys]
+    z_matrix = [
+        [float((p.get("standardized_centroid") or {}).get(k, 0.0)) for k, _ in feat_keys]
+        for p in cluster_profiles
+    ]
+    figure = go.Figure(go.Heatmap(
+        z=z_matrix,
+        x=x_labels,
+        y=y_labels,
+        colorscale=[[0.0, "#1e3a8a"], [0.35, "#eff6ff"], [0.65, "#fde68a"], [1.0, "#b91c1c"]],
+        zmin=-2.0,
+        zmax=3.0,
+        text=[[f"{val:+.2f}σ" for val in row] for row in z_matrix],
+        texttemplate="%{text}",
+        hovertemplate="Cluster: %{y}<br>Feature: %{x}<br>Centroid coordinate: %{z:+.3f}σ<extra></extra>",
+        colorbar=dict(title="Std (σ)", thickness=12),
+    ))
+    figure.update_layout(showlegend=False, hovermode="closest", margin=dict(l=16, r=24, t=18, b=28))
+    figure.update_yaxes(automargin=True)
+    return style(figure, 340)
+
+
+def geo_country_breakdown(countries):
+    """Top countries/regions by alerted Wikipedia topics (Milestone 6)."""
+    if not countries:
+        return empty("Country breakdown appears after running Milestone 6 geospatial enrichment")
+    top = countries[:10][::-1]
+    figure = go.Figure(go.Bar(
+        x=[r.get("active_topics", 0) for r in top],
+        y=[r.get("country_or_region", "Unknown") for r in top],
+        orientation="h", marker_color=BLUE,
+        hovertemplate="%{y}: %{x:,} alerted topics<extra></extra>",
+    ))
+    figure.update_xaxes(title_text="Alerted topics")
+    figure.update_yaxes(automargin=True)
+    return style(figure, 320)
+
+
+def alert_type_breakdown(m5_summary):
+    """Breakdown of detected knowledge-shift alerts by alert_type and window_duration."""
+    if not m5_summary:
+        return empty("Alert type breakdown appears after running Milestone 5 scoring")
+    type_counts = m5_summary.get("alert_type_breakdown", {})
+    if not type_counts:
+        return empty("No alert type breakdown available yet")
+    items = sorted(type_counts.items(), key=lambda kv: kv[1], reverse=True)
+    labels = [k.replace("_", " ").title() for k, _ in items]
+    values = [v for _, v in items]
+    figure = go.Figure(go.Bar(
+        x=labels, y=values,
+        marker_color=[AMBER, GREEN, BLUE, INK][:len(labels)],
+        hovertemplate="%{x}: %{y:,} alerts<extra></extra>",
+    ))
+    figure.update_yaxes(title_text="Flagged alerts")
+    return style(figure, 320)
+
+
+def score_component_breakdown(alerts):
+    """Stacked horizontal bar chart of additive 100-point Historical Score components."""
+    if not alerts:
+        return empty("Score component decomposition appears when alerts are available")
+    with_contrib = [r for r in alerts if isinstance(r.get("feature_contributions"), dict) and r.get("feature_contributions")]
+    if not with_contrib:
+        return empty("Feature contribution breakdown appears when alerts are available")
+    top = with_contrib[:10][::-1]
+    labels = [r["title"] if len(r.get("title", "")) <= 26 else r.get("title", "")[:25] + "…" for r in top]
+    y_idx = list(range(len(top)))
+    components = [
+        ("Edit velocity (/35)", "edit_velocity", GREEN),
+        ("Editor diversity (/25)", "editor_diversity", BLUE),
+        ("Byte churn (/20)", "byte_churn", AMBER),
+        ("Consensus / dispute (/10)", "consensus_or_dispute", INK),
+        ("Pageview corrob. (/10)", "pageview_corroboration", "#06a6be"),
+    ]
+    figure = go.Figure()
+    for name, key, color in components:
+        figure.add_trace(go.Bar(
+            x=[float((r.get("feature_contributions") or {}).get(key, 0.0)) for r in top],
+            y=y_idx, orientation="h", name=name, marker_color=color,
+            customdata=[r.get("title", "") for r in top],
+            hovertemplate="%{customdata}<br>" + name + ": %{x:.1f} pts<extra></extra>",
+        ))
+    figure.update_layout(barmode="stack")
+    figure.update_xaxes(title_text="Historical Knowledge-Shift Score (0–100 pts)", range=[0, 105])
+    figure.update_yaxes(automargin=True, tickfont=dict(size=11), tickmode="array",
+                        tickvals=y_idx, ticktext=labels)
+    return style(figure, 340)
+
+
+def anomaly_scatter(alerts, threshold=65.0, selected_alert_id=None):
+    """Velocity Z-Score vs Historical Score scatter across detected alerts (click to inspect)."""
+    if not alerts:
+        return empty("Anomaly score distribution appears when alerts are available")
+    valid = [r for r in alerts if r.get("velocity_zscore") is not None and r.get("historical_score") is not None][:120]
+    if not valid:
+        return empty("No velocity z-score and historical score pairs available")
+    figure = go.Figure()
+    color_map = {
+        "CONFIRMED_NEWS": GREEN,
+        "BREAKING_NEWS_CANDIDATE": BLUE,
+        "EDIT_WAR_CONTROVERSY": AMBER,
+        "MAJOR_REWRITE": INK,
+    }
+    by_type = {}
+    for r in valid:
+        atype = r.get("alert_type") or "BREAKING_NEWS_CANDIDATE"
+        by_type.setdefault(atype, []).append(r)
+    for atype, rows in by_type.items():
+        figure.add_trace(go.Scatter(
+            x=[min(300.0, float(r.get("velocity_zscore") or 0)) for r in rows],
+            y=[float(r.get("historical_score") or 0) for r in rows],
+            mode="markers",
+            name=atype.replace("_", " ").title(),
+            marker=dict(
+                size=[min(22, max(8, int(r.get("distinct_human_editors") or 3) + 5)) for r in rows],
+                color=color_map.get(atype, GREEN),
+                opacity=0.84,
+                line=dict(color="#ffffff", width=1.0),
+            ),
+            text=[r.get("title", "") for r in rows],
+            customdata=[r.get("alert_id") or r.get("title", "") for r in rows],
+            hovertemplate="<b>%{text}</b><br>Velocity z: %{x:.1f}<br>Historical score: %{y:.1f}<br><i>Click to inspect alert</i><extra></extra>",
+        ))
+    if selected_alert_id:
+        sel = [r for r in valid if (r.get("alert_id") == selected_alert_id or r.get("title") == selected_alert_id)][:1]
+        if sel:
+            r0 = sel[0]
+            figure.add_trace(go.Scatter(
+                x=[min(300.0, float(r0.get("velocity_zscore") or 0))],
+                y=[float(r0.get("historical_score") or 0)],
+                mode="markers",
+                name="Inspected Alert",
+                marker=dict(size=22, color="rgba(0,0,0,0)", line=dict(color=CORAL, width=3.2)),
+                text=[r0.get("title", "")],
+                customdata=[r0.get("alert_id") or r0.get("title", "")],
+                hovertemplate="<b>Inspected: %{text}</b><br>Velocity z: %{x:.1f}<br>Score: %{y:.1f}<extra></extra>",
+            ))
+    if threshold is not None:
+        figure.add_hline(
+            y=float(threshold),
+            line_dash="dash",
+            line_color=CORAL,
+            annotation_text=f"Min Score Threshold ({float(threshold):.0f})",
+            annotation_position="bottom right",
+        )
+    figure.update_layout(
+        hovermode="closest",
+        margin=dict(l=16, r=16, t=20, b=82),
+        legend=dict(orientation="h", y=-0.20, yanchor="top", x=0, xanchor="left", font=dict(size=11)),
+    )
+    figure.update_xaxes(title_text="Velocity Z-Score (capped at 300)", title_standoff=8)
+    figure.update_yaxes(title_text="Historical Score (0–100)", range=[45, 105])
+    return style(figure, 390)
+
+
+def single_alert_explainability_chart(alert_row, threshold=65.0):
+    """Bullet / waterfall comparison of a single alert's 5 additive score components vs caps and overall scores."""
+    if not alert_row:
+        return empty("Select or click an alert to inspect its 100-point score decomposition")
+    fc = alert_row.get("feature_contributions") or {}
+    vel = float(fc.get("edit_velocity", alert_row.get("activity_points") or 0.0))
+    ed = float(fc.get("editor_diversity", alert_row.get("editor_points") or 0.0))
+    ch = float(fc.get("byte_churn", alert_row.get("content_points") or 0.0))
+    cons = float(fc.get("consensus_or_dispute", alert_row.get("revert_points") or 0.0))
+    pv = float(fc.get("pageview_corroboration", alert_row.get("pageview_points") or 0.0))
+    hist_score = float(alert_row.get("historical_score") or (vel + ed + ch + cons + pv))
+    ml_score = float(alert_row.get("spark_ml_score") or 0.0)
+
+    categories = [
+        "Pageview Corrob. (/10)",
+        "Consensus / Dispute (/10)",
+        "Byte Churn (/20)",
+        "Editor Diversity (/25)",
+        "Edit Velocity (/35)",
+        "Spark ML Score (/100)",
+        "Historical Score (/100)",
+    ]
+    caps = [10.0, 10.0, 20.0, 25.0, 35.0, 100.0, 100.0]
+    earned = [pv, cons, ch, ed, vel, ml_score, hist_score]
+    colors = ["#06a6be", INK, AMBER, BLUE, GREEN, "#8b5cf6", CORAL if hist_score >= float(threshold or 65.0) else AMBER]
+
+    figure = go.Figure()
+    figure.add_trace(go.Bar(
+        y=categories,
+        x=caps,
+        orientation="h",
+        name="Max Possible Cap",
+        marker_color="rgba(160, 175, 200, 0.25)",
+        hovertemplate="%{y}<br>Max cap: %{x:.1f} pts<extra></extra>",
+    ))
+    figure.add_trace(go.Bar(
+        y=categories,
+        x=earned,
+        orientation="h",
+        name="Earned Points / Score",
+        marker_color=colors,
+        text=[f"{v:.1f} / {c:.0f}" for v, c in zip(earned, caps)],
+        textposition="auto",
+        hovertemplate="%{y}<br>Earned: %{x:.2f} pts<extra></extra>",
+    ))
+    if threshold is not None:
+        figure.add_vline(
+            x=float(threshold),
+            line_dash="dash",
+            line_color=CORAL,
+            annotation_text=f"Threshold ({float(threshold):.0f})",
+            annotation_position="top",
+        )
+    figure.update_layout(
+        barmode="overlay",
+        hovermode="closest",
+        margin=dict(l=16, r=20, t=48, b=28),
+        legend=dict(orientation="h", y=1.03, yanchor="bottom", x=0, xanchor="left"),
+    )
+    figure.update_xaxes(title_text="Points / Score (0–100 scale)", range=[0, 108])
+    figure.update_yaxes(automargin=True)
+    return style(figure, 330)
+
+
+def false_alert_comparison_chart(full_comp, sample_comp=None):
+    """Grouped bar chart comparing Precision (%) and False-Alert Rate (%) across Detectors A, B, and C."""
+    rows = full_comp or sample_comp or []
+    if not rows:
+        return empty("Detector false-alert evaluation appears after running evaluate_alerts.py")
+    short_labels = []
+    for r in rows:
+        det = r.get("detector", "")
+        if "Naive" in det:
+            short_labels.append("Det A (Naive Fixed)")
+        elif "All Shift" in det or "Fixed" in det:
+            short_labels.append("Det A (Fixed All)")
+        elif "Historical" in det:
+            short_labels.append("Det B (Historical)")
+        elif "Spark ML" in det:
+            short_labels.append("Det C (Spark ML)")
+        else:
+            short_labels.append(det[:22])
+    figure = go.Figure()
+    figure.add_trace(go.Bar(
+        x=short_labels,
+        y=[r.get("precision_pct", 0) for r in rows],
+        name="Precision (%)",
+        marker_color=GREEN,
+        hovertemplate="%{x}<br>Precision: %{y:.2f}%<extra></extra>",
+    ))
+    figure.add_trace(go.Bar(
+        x=short_labels,
+        y=[r.get("false_alert_rate_pct", 0) for r in rows],
+        name="False-Alert Rate (%)",
+        marker_color=AMBER,
+        hovertemplate="%{x}<br>False-Alert Rate: %{y:.2f}%<extra></extra>",
+    ))
+    figure.update_layout(
+        barmode="group",
+        hovermode="closest",
+        margin=dict(l=16, r=16, t=46, b=28),
+        legend=dict(orientation="h", y=1.03, yanchor="bottom", x=0, xanchor="left"),
+    )
+    figure.update_yaxes(title_text="Percentage (%)", range=[0, 110])
+    return style(figure, 360)
+
+
+def synthetic_patterns_chart(pattern_details):
+    """Bar chart of synthetic knowledge-shift patterns (5 positive + 2 negative controls) across Detectors A, B, and C."""
+    if not pattern_details:
+        return empty("Synthetic pattern injection results appear after running evaluate_alerts.py")
+    labels = [
+        r.get("pattern_title", "").replace("SYNTH_", "").replace("CTRL_", "CTRL: ").replace("_", " ").title()
+        for r in pattern_details
+    ]
+    scores_b = [float(r.get("historical_score") or 0.0) for r in pattern_details]
+    has_ml = any("spark_ml_score" in r for r in pattern_details)
+    if not has_ml:
+        colors = [GREEN if r.get("expected_positive") else AMBER for r in pattern_details]
+        figure = go.Figure(go.Bar(
+            x=scores_b[::-1], y=labels[::-1], orientation="h",
+            marker_color=colors[::-1],
+            hovertemplate="%{y}: %{x:.1f} pts<extra></extra>",
+        ))
+        figure.add_vline(x=65.0, line_dash="dash", line_color="#d94b6a", annotation_text="Alert threshold (65)")
+        figure.update_xaxes(title_text="Historical Score (0–100)", range=[0, 105])
+        figure.update_yaxes(automargin=True)
+        return style(figure, 320)
+
+    scores_c = [float(r.get("spark_ml_score") or 0.0) for r in pattern_details]
+    scores_a = [75.0 if r.get("detector_a_fixed_flag") else 8.0 for r in pattern_details]
+    figure = go.Figure()
+    figure.add_trace(go.Bar(
+        x=scores_b[::-1],
+        y=labels[::-1],
+        orientation="h",
+        name="Detector B: Historical Score (/100)",
+        marker_color=GREEN,
+        hovertemplate="%{y}<br>Detector B (Historical): %{x:.1f} / 100<extra></extra>",
+    ))
+    figure.add_trace(go.Bar(
+        x=scores_c[::-1],
+        y=labels[::-1],
+        orientation="h",
+        name="Detector C: Spark ML Score (/100)",
+        marker_color=BLUE,
+        hovertemplate="%{y}<br>Detector C (Spark ML): %{x:.1f} / 100<extra></extra>",
+    ))
+    figure.add_trace(go.Scatter(
+        x=scores_a[::-1],
+        y=labels[::-1],
+        mode="markers",
+        name="Detector A: Fixed Rule (Flagged vs Suppressed)",
+        marker=dict(
+            size=11,
+            symbol=["diamond" if r.get("detector_a_fixed_flag") else "x" for r in pattern_details[::-1]],
+            color=[CORAL if r.get("detector_a_fixed_flag") else INK for r in pattern_details[::-1]],
+            line=dict(color="#ffffff", width=1),
+        ),
+        customdata=["FLAGGED" if r.get("detector_a_fixed_flag") else "SUPPRESSED" for r in pattern_details[::-1]],
+        hovertemplate="%{y}<br>Detector A (Fixed Rule): %{customdata}<extra></extra>",
+    ))
+    figure.add_vline(x=65.0, line_dash="dash", line_color=CORAL, annotation_text="Hist Threshold (65)")
+    figure.add_vline(x=68.0, line_dash="dot", line_color=BLUE, annotation_text="ML Threshold (68)", annotation_position="bottom right")
+    figure.update_layout(barmode="group")
+    figure.update_xaxes(title_text="Detector Score (0–100) & Fixed Rule Verdict", range=[0, 108])
+    figure.update_yaxes(automargin=True)
+    return style(figure, 360)
+
+
+def ml_threshold_calibration_chart(calib_data, detector_focus="both"):
+    """Precision, Recall, F1, and False-Alert Tradeoff Curve across score thresholds (50..95) for Detectors A, B, and C."""
+    if not calib_data:
+        return empty("Threshold calibration curves appear after running evaluate_alerts.py")
+    b_curve = calib_data.get("detector_b_curve", [])
+    c_curve = calib_data.get("detector_c_curve", [])
+    a_ref = calib_data.get("detector_a_reference", {})
+    if not b_curve and not c_curve:
+        return empty("No threshold calibration points available")
+
+    figure = go.Figure()
+    if detector_focus in ("both", "detector_b") and b_curve:
+        x_b = [r["threshold"] for r in b_curve]
+        figure.add_trace(go.Scatter(
+            x=x_b, y=[r["precision_pct"] for r in b_curve],
+            mode="lines+markers", name="Det B Precision (%)",
+            line=dict(color=GREEN, width=2.6),
+            hovertemplate="Threshold %{x}<br>Det B Precision: %{y:.2f}%<extra></extra>",
+        ))
+        figure.add_trace(go.Scatter(
+            x=x_b, y=[r["recall_pct"] for r in b_curve],
+            mode="lines+markers", name="Det B Recall (%)",
+            line=dict(color=GREEN, width=2.0, dash="dot"),
+            hovertemplate="Threshold %{x}<br>Det B Recall: %{y:.2f}%<extra></extra>",
+        ))
+        figure.add_trace(go.Scatter(
+            x=x_b, y=[r["f1_pct"] for r in b_curve],
+            mode="lines+markers", name="Det B F1-Score (%)",
+            line=dict(color="#059669", width=3.0),
+            hovertemplate="Threshold %{x}<br>Det B F1: %{y:.2f}%<extra></extra>",
+        ))
+
+    if detector_focus in ("both", "detector_c") and c_curve:
+        x_c = [r["threshold"] for r in c_curve]
+        figure.add_trace(go.Scatter(
+            x=x_c, y=[r["precision_pct"] for r in c_curve],
+            mode="lines+markers", name="Det C (Spark ML) Precision (%)",
+            line=dict(color=BLUE, width=2.6),
+            hovertemplate="Threshold %{x}<br>Det C Precision: %{y:.2f}%<extra></extra>",
+        ))
+        figure.add_trace(go.Scatter(
+            x=x_c, y=[r["recall_pct"] for r in c_curve],
+            mode="lines+markers", name="Det C (Spark ML) Recall (%)",
+            line=dict(color=BLUE, width=2.0, dash="dot"),
+            hovertemplate="Threshold %{x}<br>Det C Recall: %{y:.2f}%<extra></extra>",
+        ))
+        figure.add_trace(go.Scatter(
+            x=x_c, y=[r["f1_pct"] for r in c_curve],
+            mode="lines+markers", name="Det C (Spark ML) F1-Score (%)",
+            line=dict(color="#7c3aed", width=3.0),
+            hovertemplate="Threshold %{x}<br>Det C F1: %{y:.2f}%<extra></extra>",
+        ))
+
+    if a_ref and a_ref.get("f1_pct") is not None:
+        figure.add_hline(
+            y=float(a_ref["f1_pct"]),
+            line_dash="dash",
+            line_color=AMBER,
+            annotation_text=f"Det A Fixed Rule F1 ({a_ref['f1_pct']:.1f}%)",
+            annotation_position="bottom right",
+        )
+    figure.add_vline(
+        x=65, line_dash="dash", line_color=GREEN,
+        annotation_text="Det B Default (65)", annotation_position="top left",
+        annotation_xshift=-4, annotation_font=dict(size=11, color=GREEN),
+    )
+    figure.add_vline(
+        x=68, line_dash="dot", line_color=BLUE,
+        annotation_text="Det C Default (68)", annotation_position="bottom right",
+        annotation_xshift=4, annotation_font=dict(size=11, color=BLUE),
+    )
+    figure.update_layout(
+        hovermode="closest",
+        margin=dict(l=16, r=20, t=24, b=82),
+        legend=dict(orientation="h", y=-0.20, yanchor="top", x=0.5, xanchor="center", font=dict(size=11.5)),
+    )
+    figure.update_xaxes(title_text="Score Threshold (50 – 95)", dtick=5, title_standoff=8)
+    figure.update_yaxes(title_text="Metric (%)", range=[0, 108])
+    return style(figure, 410)
+
+
+def detector_b_vs_c_correlation_chart(corr_data, alerts=None):
+    """Scatter & quadrant disagreement plot of Detector B (Historical Score) vs Detector C (Spark ML Score)."""
+    pts = (corr_data or {}).get("scatter_points") or alerts or []
+    if not pts:
+        return empty("Detector B vs Detector C correlation plot appears when alerts are available")
+
+    cohort_colors = {
+        "All-3 Consensus (A ∩ B ∩ C)": GREEN,
+        "B ∩ C Only (Quiet-Page Shifts Missed by A)": BLUE,
+        "A ∩ B Only (High-Threshold Rule + Hist)": AMBER,
+        "Detector B Only (Explainable Niche Surge)": "#06a6be",
+        "Detector C Only (ML Centroid Outlier)": "#7c3aed",
+        "Detector A Only (Hyperactive Routine Noise)": CORAL,
+    }
+    by_cohort = {}
+    for p in pts[:220]:
+        c_label = p.get("agreement_cohort")
+        if not c_label:
+            fa = bool(p.get("fixed_threshold_flag"))
+            fb = float(p.get("historical_score") or 0.0) >= 65.0
+            fc = float(p.get("spark_ml_score") or 0.0) >= 68.0
+            if fa and fb and fc:
+                c_label = "All-3 Consensus (A ∩ B ∩ C)"
+            elif (not fa) and fb and fc:
+                c_label = "B ∩ C Only (Quiet-Page Shifts Missed by A)"
+            elif fb and not fc:
+                c_label = "Detector B Only (Explainable Niche Surge)"
+            elif fc and not fb:
+                c_label = "Detector C Only (ML Centroid Outlier)"
+            else:
+                c_label = "Detector A Only (Hyperactive Routine Noise)"
+        by_cohort.setdefault(c_label, []).append(p)
+
+    figure = go.Figure()
+    # Reference diagonal y = x parity line
+    figure.add_trace(go.Scatter(
+        x=[50, 100], y=[50, 100],
+        mode="lines",
+        name="Parity (Det B == Det C)",
+        line=dict(color="rgba(120,135,160,0.45)", width=1.5, dash="dash"),
+        hoverinfo="skip",
+    ))
+    for cohort, rows in by_cohort.items():
+        figure.add_trace(go.Scatter(
+            x=[float(r.get("historical_score") or 0.0) for r in rows],
+            y=[float(r.get("spark_ml_score") or 0.0) for r in rows],
+            mode="markers",
+            name=cohort,
+            marker=dict(
+                size=[min(18, max(7, int(r.get("distinct_human_editors") or 3) + 4)) for r in rows],
+                color=cohort_colors.get(cohort, GREEN),
+                opacity=0.85,
+                line=dict(color="#ffffff", width=0.9),
+            ),
+            text=[
+                f"<b>{r.get('title')}</b> ({r.get('window_duration', '5m')})<br>"
+                f"Cohort: {cohort}<br>"
+                f"Class: {r.get('alert_type', '—')}"
+                for r in rows
+            ],
+            hovertemplate="%{text}<br>Det B (Historical): %{x:.1f}<br>Det C (Spark ML): %{y:.1f}<extra></extra>",
+        ))
+    figure.add_vline(
+        x=65.0, line_dash="dot", line_color=GREEN,
+        annotation_text="Det B ≥ 65", annotation_position="top left",
+        annotation_font=dict(size=11, color=GREEN),
+    )
+    figure.add_hline(
+        y=68.0, line_dash="dot", line_color=BLUE,
+        annotation_text="Det C ≥ 68", annotation_position="bottom right",
+        annotation_font=dict(size=11, color=BLUE),
+    )
+    figure.update_layout(
+        hovermode="closest",
+        margin=dict(l=16, r=16, t=20, b=112),
+        legend=dict(orientation="h", y=-0.24, yanchor="top", x=0, xanchor="left", font=dict(size=11)),
+    )
+    figure.update_xaxes(title_text="Detector B: Explainable Historical Score (0–100)", range=[48, 103], title_standoff=8)
+    figure.update_yaxes(title_text="Detector C: Spark ML Score (0–100)", range=[40, 103])
+    return style(figure, 420)
+
+
+def revert_risk_multi_curve(m6_revert_risk):
+    """Compare F1 score curves across Lift Wing ML, Composite Risk, and Heuristic Risk (Milestone 6)."""
+    exp5 = (m6_revert_risk or {}).get("experiment_5_threshold_calibration", {})
+    ml_curve = exp5.get("liftwing_ml_curve", [])
+    comp_curve = exp5.get("composite_risk_curve", [])
+    heur_curve = exp5.get("heuristic_risk_curve", [])
+    if not (ml_curve or comp_curve or heur_curve):
+        return empty("Multi-model F1 calibration appears after running revert_risk_monitor.py")
+    figure = go.Figure()
+    for name, curve, color in (
+        ("Composite Risk F1 (%)", comp_curve, GREEN),
+        ("Lift Wing ML F1 (%)", ml_curve, BLUE),
+        ("Heuristic Risk F1 (%)", heur_curve, AMBER),
+    ):
+        if curve:
+            figure.add_trace(go.Scatter(
+                x=[r.get("threshold") for r in curve],
+                y=[r.get("f1_pct") for r in curve],
+                name=name, mode="lines+markers", line=dict(color=color, width=2.5),
+            ))
+    figure.add_vline(x=0.65, line_dash="dot", line_color=GREEN, annotation_text="0.65 Calibrated")
+    figure.add_vline(x=0.80, line_dash="dash", line_color="#98a4b7", annotation_text="0.80 Static")
+    figure.update_xaxes(title_text="Revert Risk Decision Threshold (τ)")
+    figure.update_yaxes(title_text="F1 Score (%)", range=[0, 100])
+    return style(figure, 320)
+
+
+def mttr_comparison(mttr_breakdown):
+    """Mean vs Median Time-to-Revert (seconds) across Overall, Human, and Bot reverters."""
+    if not mttr_breakdown:
+        return empty("Time-to-Revert (MTTR) breakdown appears after running revert_risk_monitor.py")
+    categories = [
+        ("Overall Reverted", mttr_breakdown.get("overall", {})),
+        ("Human Reverters", mttr_breakdown.get("human_reverters", {})),
+        ("Bot Reverters", mttr_breakdown.get("bot_reverters", {})),
+    ]
+    labels = [label for label, d in categories if d.get("count")]
+    if not labels:
+        return empty("No reverted revisions with TTR recorded yet")
+    means = [d.get("mean_sec") or 0 for _, d in categories if d.get("count")]
+    medians = [d.get("median_sec") or 0 for _, d in categories if d.get("count")]
+    figure = go.Figure()
+    figure.add_trace(go.Bar(
+        x=labels, y=medians, name="Median TTR (s)", marker_color=GREEN,
+        hovertemplate="%{x}<br>Median TTR: %{y:.1f}s<extra></extra>",
+    ))
+    figure.add_trace(go.Bar(
+        x=labels, y=means, name="Mean TTR (s)", marker_color=BLUE,
+        hovertemplate="%{x}<br>Mean TTR: %{y:.1f}s<extra></extra>",
+    ))
+    figure.update_layout(barmode="group")
+    figure.update_yaxes(title_text="Seconds to revert")
+    return style(figure, 320)
+
+
+def historical_alerts_timeline(daily_alerts):
+    """Stacked daily count of detected historical knowledge shifts by alert_type."""
+    if not daily_alerts:
+        return empty("Historical anomaly timeline populates when curated/alerts covers the selected dates")
+    x = [r.get("day") for r in daily_alerts]
+    figure = go.Figure()
+    series = [
+        ("Confirmed news", "confirmed_news", GREEN),
+        ("Breaking candidate", "breaking_news", BLUE),
+        ("Edit war / dispute", "edit_war", AMBER),
+        ("Major rewrite", "major_rewrite", INK),
+    ]
+    for label, key, color in series:
+        figure.add_trace(go.Bar(
+            x=x, y=[r.get(key, 0) for r in daily_alerts],
+            name=label, marker_color=color,
+        ))
+    figure.update_layout(barmode="stack")
+    figure.update_yaxes(title_text="Detected shifts / day")
+    return style(figure, 300)
+
+
+def baseline_tier_distribution(tier_rows):
+    """Distribution of per-page historical baselines across activity tiers (quiet/moderate/active/hyperactive)."""
+    if not tier_rows:
+        return empty("Baseline tier distribution populates when page_baselines is available")
+    labels = [str(r.get("activity_tier", "unknown")).title() for r in tier_rows]
+    counts = [r.get("pages_count", 0) for r in tier_rows]
+    figure = go.Figure(go.Bar(
+        x=labels, y=counts, marker_color=[BLUE, GREEN, AMBER, INK][:len(labels)],
+        hovertemplate="%{x}: %{y:,} article baselines<extra></extra>",
+    ))
+    figure.update_yaxes(title_text="Articles (log scale)", type="log")
+    return style(figure, 300)
+
+
+def recentchanges_regional_map(
+    country_rollup,
+    map_articles,
+    selected_region="ALL",
+    projection="natural earth",
+    metric_key="total_edits",
+):
+    """Dual-layer Choropleth (country RecentChanges density) + Scattergeo (article bubbles)."""
+    if not country_rollup and not map_articles:
+        return empty("Regional RecentChanges map populates when curated tables are available")
+    metric_meta = {
+        "total_edits": ("Total Edits", "total_edits", "edits_total", 0.42, ""),
+        "human_edits": ("Human Edits", "total_edits_human", "edits_human", 0.42, ""),
+        "gross_bytes": ("Gross Churn (B)", "gross_bytes", "gross_bytes", 0.25, " B"),
+        "reverts": ("Reverts", "reverts", "reverts", 0.50, ""),
+    }
+    m_label, country_col, art_col, size_exp, unit = metric_meta.get(
+        metric_key, metric_meta["total_edits"]
+    )
+    figure = go.Figure()
+    if country_rollup:
+        figure.add_trace(go.Choropleth(
+            locations=[r.get("country_or_region") for r in country_rollup],
+            locationmode="country names",
+            z=[r.get(country_col) or r.get("total_edits") or 0 for r in country_rollup],
+            customdata=[f"COUNTRY|{r.get('country_or_region')}" for r in country_rollup],
+            text=[
+                f"<b>{r.get('country_or_region')}</b> ({r.get('macro_region', '')})<br>"
+                f"Active articles: {r.get('active_topics', r.get('active_articles', 0)):,}<br>"
+                f"Human edits: {r.get('total_edits_human', r.get('human_edits', 0)):,} · Bot edits: {r.get('total_edits_bot', r.get('bot_edits', 0)):,}<br>"
+                f"Gross churn: {r.get('gross_bytes', 0):,} B · Reverts: {r.get('reverts', 0):,}<br>"
+                f"Top article: {r.get('top_article', '—')}<br>"
+                f"<i>Click country to filter dashboard to {r.get('country_or_region')}</i>"
+                for r in country_rollup
+            ],
+            colorscale=[[0.0, "#dce8f8"], [0.35, "#7ea8e8"], [0.7, "#1f5eff"], [1.0, "#0b2878"]],
+            showscale=True,
+            colorbar=dict(title=m_label, thickness=14, len=0.72, x=0.985),
+            hovertemplate=f"%{{text}}<br>{m_label}: %{{z:,}}{unit}<extra></extra>",
+            name="Country density",
+        ))
+    if map_articles:
+        macro_colors = {
+            "North America": BLUE,
+            "Europe": GREEN,
+            "South Asia": AMBER,
+            "East & Southeast Asia": "#7c3aed",
+            "Middle East & Africa": "#db2777",
+            "Latin America": "#0891b2",
+            "Oceania": "#ea580c",
+        }
+        figure.add_trace(go.Scattergeo(
+            lat=[r.get("lat") for r in map_articles],
+            lon=[r.get("lon") for r in map_articles],
+            text=[
+                f"<b>{r.get('title')}</b><br>"
+                f"Region: {r.get('country_or_region')} ({r.get('macro_region')})<br>"
+                f"Edits: {r.get('edits_total', r.get('edits', 0)):,} "
+                f"(Human: {r.get('edits_human', r.get('human', 0)):,}, Bot: {r.get('edits_bot', r.get('bots', 0)):,})<br>"
+                f"Gross churn: {r.get('gross_bytes', 0):,} B · Reverts: {r.get('reverts', 0):,}<br>"
+                f"Source: {r.get('location_source', 'wikidata')} ({r.get('location_quality', 'exact')})<br>"
+                f"<i>Click bubble to inspect article below</i>"
+                for r in map_articles
+            ],
+            customdata=[
+                f"ARTICLE|{r.get('title')}|{r.get('country_or_region', '')}"
+                for r in map_articles
+            ],
+            mode="markers",
+            name="Edited articles",
+            hovertemplate="%{text}<extra></extra>",
+            marker=dict(
+                size=[
+                    min(30, max(8, 6 + (max(1, int(r.get(art_col) or r.get("edits_total") or r.get("edits") or 1)) ** size_exp)))
+                    for r in map_articles
+                ],
+                color=[macro_colors.get(r.get("macro_region"), CORAL) for r in map_articles],
+                line=dict(color="#ffffff", width=1.25),
+                opacity=0.90,
+            ),
+        ))
+    proj_norm = projection if projection in (
+        "natural earth", "orthographic", "equirectangular", "mercator", "robinson"
+    ) else "natural earth"
+    scope_map = {
+        "North America": "north america",
+        "Europe": "europe",
+        "Latin America": "south america",
+    }
+    geo_scope = scope_map.get(selected_region, "world") if proj_norm != "orthographic" else "world"
+    geo_kwargs = dict(
+        scope=geo_scope,
+        showcountries=True, countrycolor="#b9c5d8", countrywidth=0.8,
+        showsubunits=True, subunitcolor="#d6dfec",
+        showland=True, landcolor="#eef2f7",
+        showocean=True, oceancolor="#f7f9fc",
+        showlakes=True, lakecolor="#e3eefc",
+        showcoastlines=True, coastlinecolor="#b9c5d8", coastlinewidth=0.7,
+        projection_type=proj_norm,
+        lonaxis=dict(showgrid=True, gridcolor="rgba(160,175,200,0.18)"),
+        lataxis=dict(showgrid=True, gridcolor="rgba(160,175,200,0.18)"),
+    )
+    # Auto-center and zoom when a country or non-scope macro-region is selected
+    if selected_region and selected_region != "ALL" and geo_scope == "world":
+        lats = [float(r["lat"]) for r in (country_rollup or map_articles) if r.get("lat") is not None]
+        lons = [float(r["lon"]) for r in (country_rollup or map_articles) if r.get("lon") is not None]
+        if lats and lons:
+            c_lat = sum(lats) / len(lats)
+            c_lon = sum(lons) / len(lons)
+            is_macro = selected_region in (
+                "South Asia", "East & Southeast Asia", "Middle East & Africa", "Oceania",
+                "North America", "Europe", "Latin America",
+            )
+            geo_kwargs["center"] = dict(lat=c_lat, lon=c_lon)
+            if proj_norm == "orthographic":
+                geo_kwargs["projection_rotation"] = dict(lat=c_lat, lon=c_lon, roll=0)
+            else:
+                geo_kwargs["projection_scale"] = 1.9 if is_macro else 3.2
+    figure.update_geos(**geo_kwargs)
+    styled = style(figure, 620)
+    styled.update_layout(
+        margin=dict(l=0, r=0, t=8, b=8),
+        legend=dict(
+            orientation="h", yanchor="bottom", y=0.01, xanchor="left", x=0.01,
+            bgcolor="rgba(255,255,255,0.82)", bordercolor="#dfe6f2", borderwidth=1,
+        ),
+    )
+    return styled
+
+
+def regional_edits_breakdown(country_rollup):
+    """Horizontal stacked bar chart of Human vs Bot RecentChanges edits by country/region."""
+    if not country_rollup:
+        return empty("No regional edits found for the selected filter")
+    top = country_rollup[:15][::-1]
+    countries = [r.get("country_or_region", "Unknown") for r in top]
+    human = [r.get("total_edits_human") or 0 for r in top]
+    bots = [r.get("total_edits_bot") or 0 for r in top]
+    figure = go.Figure()
+    figure.add_trace(go.Bar(
+        y=countries, x=human, orientation="h", name="Human edits", marker_color=BLUE,
+        hovertemplate="%{y}<br>Human edits: %{x:,}<extra></extra>",
+    ))
+    figure.add_trace(go.Bar(
+        y=countries, x=bots, orientation="h", name="Bot edits", marker_color=AMBER,
+        hovertemplate="%{y}<br>Bot edits: %{x:,}<extra></extra>",
+    ))
+    figure.update_layout(barmode="stack")
+    figure.update_xaxes(title_text="RecentChanges edits in selected range")
+    return style(figure, 360)
+
+
+def regional_edits_timeline(timeline, mode="days"):
+    """Time-series of Regional RecentChanges Human edits, Bot edits, and Active Pages."""
+    if not timeline:
+        return empty("Regional timeline populates when RecentChanges rows match the time range")
+    x = [
+        format_india_time(r.get("bucket")) if "T" in str(r.get("bucket", "")) else r.get("bucket")
+        for r in timeline
+    ]
+    figure = go.Figure()
+    figure.add_trace(go.Scatter(
+        x=x, y=[r.get("human") or 0 for r in timeline],
+        name="Human edits", mode="lines+markers", line=dict(color=BLUE, width=2.4),
+        fill="tozeroy", fillcolor="rgba(31,94,255,0.12)",
+    ))
+    figure.add_trace(go.Scatter(
+        x=x, y=[r.get("bots") or 0 for r in timeline],
+        name="Bot edits", mode="lines", line=dict(color=AMBER, width=1.8, dash="dot"),
+    ))
+    figure.add_trace(go.Scatter(
+        x=x, y=[r.get("reverts") or 0 for r in timeline],
+        name="Reverts", mode="lines", line=dict(color=CORAL, width=1.6),
+    ))
+    figure.update_xaxes(title_text="Window (IST)" if mode != "days" else "Curated Day (UTC)")
+    figure.update_yaxes(title_text="Edits per bucket")
+    return style(figure, 340)
+
+
+def macro_region_distribution(macro_regions):
+    """Comparison of Macro-Regions by Total Edits and Active Articles."""
+    if not macro_regions:
+        return empty("Macro-region breakdown populates when located RecentChanges are available")
+    labels = [r.get("macro_region", "Other") for r in macro_regions]
+    edits = [r.get("total_edits") or 0 for r in macro_regions]
+    topics = [r.get("active_topics") or 0 for r in macro_regions]
+    figure = go.Figure()
+    figure.add_trace(go.Bar(
+        x=labels, y=edits, name="Total edits", marker_color=BLUE,
+        hovertemplate="%{x}<br>Total edits: %{y:,}<extra></extra>",
+    ))
+    figure.add_trace(go.Bar(
+        x=labels, y=topics, name="Active articles", marker_color=GREEN,
+        hovertemplate="%{x}<br>Active articles: %{y:,}<extra></extra>",
+    ))
+    figure.update_layout(barmode="group")
+    figure.update_yaxes(title_text="Count (log scale)", type="log")
+    return style(figure, 340)
+

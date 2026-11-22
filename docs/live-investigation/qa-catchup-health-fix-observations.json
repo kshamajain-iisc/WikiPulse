@@ -1,0 +1,131 @@
+{
+  "tests": "112 passed in 23.307 seconds",
+  "covered_cases": [
+    "healthy old-event ingestion -> catching_up",
+    "recent events -> live regardless of finalized window age",
+    "stalled collector -> stale",
+    "stalled Spark ingestion -> stale",
+    "broken/stopped/transition states retain precedence",
+    "reconnect and mismatched-source telemetry do not claim healthy capture",
+    "waiting for first event does not claim historical data is arriving",
+    "duplicate collector rejected across processes",
+    "lock released after normal exit and process crash",
+    "duplicate main exits before producer creation",
+    "catch-up Start disabled / Stop enabled"
+  ],
+  "source_to_restore": {
+    "mode": "since",
+    "since": "2026-11-04T10:00:00.000Z"
+  },
+  "final_health": {
+    "managed": true,
+    "state": "catching_up",
+    "label": "CATCHING UP \u00b7 Wikipedia history is arriving \u00b7 Latest captured event 2026-11-09T14:17:47+00:00",
+    "last_event": "2026-11-09T14:17:47+00:00",
+    "services": {
+      "dashboard": {
+        "pid": 45146,
+        "running": true
+      },
+      "collector": {
+        "pid": 49449,
+        "running": true
+      },
+      "bronze": {
+        "pid": 49454,
+        "running": true
+      },
+      "windows-5m": {
+        "pid": 49537,
+        "running": true
+      },
+      "windows-1h": {
+        "pid": 49677,
+        "running": true
+      },
+      "detection-5m": {
+        "pid": 49910,
+        "running": true
+      },
+      "detection-1h": {
+        "pid": 50394,
+        "running": true
+      }
+    },
+    "updated_at": "2026-11-16T17:19:38.815769+00:00",
+    "error": null
+  },
+  "source": {
+    "mode": "since",
+    "since": "2026-11-04T10:00:00.000Z"
+  },
+  "collector_progress": {
+    "since": "2026-11-04T10:00:00.000Z",
+    "state": "connected",
+    "queued_events": 1890,
+    "queued_bytes": 2407655,
+    "first_event": "2026-11-09T13:50:21+00:00",
+    "latest_event": "2026-11-09T14:17:47+00:00",
+    "started_at": "2026-11-16T17:16:57.326744+00:00",
+    "message": "Wikipedia connected; fetching since 2026-11-04T10:00:00.000Z",
+    "updated_at": "2026-11-16T17:19:37.587357+00:00",
+    "delivery": {
+      "received": 91772,
+      "filtered": 89882,
+      "invalid": 0,
+      "queued": 1890,
+      "published": 1881,
+      "failed": 0
+    }
+  },
+  "runtime": {
+    "state": "running",
+    "supervisor_pid": 45118,
+    "updated_at": "2026-11-16T17:19:38.815769+00:00",
+    "services": {
+      "dashboard": {
+        "pid": 45146,
+        "running": true
+      },
+      "collector": {
+        "pid": 49449,
+        "running": true
+      },
+      "bronze": {
+        "pid": 49454,
+        "running": true
+      },
+      "windows-5m": {
+        "pid": 49537,
+        "running": true
+      },
+      "windows-1h": {
+        "pid": 49677,
+        "running": true
+      },
+      "detection-5m": {
+        "pid": 49910,
+        "running": true
+      },
+      "detection-1h": {
+        "pid": 50394,
+        "running": true
+      }
+    },
+    "error": null
+  },
+  "real_duplicate_attempt": {
+    "exit_code": 1,
+    "message": "Another WikiPulse collector already publishes to this broker/topic. Use Apply stream source in the managed dashboard to change its date."
+  },
+  "browser": {
+    "header": "CATCHING UP \u00b7 Wikipedia history is arriving",
+    "health_class": "health-tag health-catching_up",
+    "source": "2026-11-04T10:00:00.000Z",
+    "start_disabled": true,
+    "stop_disabled": false,
+    "console_collapsed": true,
+    "live_mode_verified_before_since": true,
+    "restart_transition_verified": true
+  }
+}

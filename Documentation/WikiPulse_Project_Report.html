@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>WikiPulse: Real-Time Detection and Analysis of Wikipedia Knowledge Shifts — Project Report</title>
+<style>
+  @page { size: A4 portrait; margin: 2.5cm; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "Times New Roman", "Nimbus Roman", Georgia, serif;
+    font-size: 10pt;
+    line-height: 1.32;
+    color: #111827;
+    background: #ffffff;
+    text-align: justify;
+  }
+  .report-header { text-align: center; border-bottom: 1.5px solid #1e3a8a; padding-bottom: 7px; margin-bottom: 9px; }
+  .report-title { font-family: "Helvetica Neue", Arial, sans-serif; font-size: 14pt; font-weight: 800; color: #0f172a; margin-bottom: 3px; line-height: 1.2; }
+  .report-subtitle { font-family: "Helvetica Neue", Arial, sans-serif; font-size: 8.8pt; font-weight: 600; color: #1e40af; margin-bottom: 6px; }
+  .authors-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; text-align: center; font-family: "Helvetica Neue", Arial, sans-serif; font-size: 8.4pt; }
+  .author-box { background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 3px; padding: 3px; }
+  .author-name { font-weight: 700; color: #0f172a; }
+  .author-email { font-family: Menlo, Consolas, monospace; font-size: 7.5pt; color: #1d4ed8; }
+  h1 {
+    font-family: "Helvetica Neue", Arial, sans-serif; font-size: 11pt; font-weight: 800; color: #0f172a;
+    text-transform: uppercase; letter-spacing: 0.2px; border-bottom: 1px solid #1e3a8a;
+    padding-bottom: 2px; margin-top: 12px; margin-bottom: 6px; page-break-after: avoid; text-align: left;
+  }
+  h2 {
+    font-family: "Helvetica Neue", Arial, sans-serif; font-size: 9.8pt; font-weight: 700; color: #1e3a8a;
+    margin-top: 8px; margin-bottom: 3px; page-break-after: avoid; text-align: left;
+  }
+  p { margin-bottom: 5px; }
+  ul, ol { margin-left: 16px; margin-bottom: 5px; }
+  li { margin-bottom: 2.5px; }
+  code { font-family: Menlo, Consolas, monospace; font-size: 8.2pt; background: #f1f5f9; padding: 0 2px; border-radius: 2px; }
+  table {
+    width: 100%; border-collapse: collapse; margin: 5px 0 7px 0;
+    font-family: "Helvetica Neue", Arial, sans-serif; font-size: 8pt; line-height: 1.25; text-align: left;
+    page-break-inside: avoid;
+  }
+  th { background: #1e293b; color: #ffffff; font-weight: 700; padding: 3.5px 5px; border: 1px solid #334155; }
+  td { padding: 3px 5px; border: 1px solid #cbd5e1; vertical-align: top; }
+  tr:nth-child(even) td { background: #f8fafc; }
+  .num { text-align: right; font-variant-numeric: tabular-nums; }
+  .center { text-align: center; }
+  .badge-pass { display: inline-block; background: #dcfce7; color: #166534; border: 1px solid #86efac; font-weight: 700; font-size: 7pt; padding: 0 4px; border-radius: 2px; }
+  .kpi-strip { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin: 6px 0 4px 0; font-family: "Helvetica Neue", Arial, sans-serif; text-align: center; }
+  .kpi-box { background: #f1f5f9; border: 1px solid #cbd5e1; border-top: 2px solid #1e40af; border-radius: 3px; padding: 4px; }
+  .kpi-val { font-size: 10pt; font-weight: 800; color: #0f172a; }
+  .kpi-lbl { font-size: 7.2pt; color: #475569; }
+  .figure { margin: 6px 0 8px 0; page-break-inside: avoid; text-align: center; }
+  .figure svg { width: 100%; height: auto; }
+  .figure-caption { font-family: "Helvetica Neue", Arial, sans-serif; font-size: 7.6pt; color: #334155; margin-top: 3px; text-align: center; }
+  .fig-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin: 6px 0; }
+  .fig-card {
+    border: 1px solid #cbd5e1;
+    border-radius: 3px;
+    padding: 4px 5px;
+    background: #f8fafc;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+  .fig-card img {
+    width: 100%;
+    height: 4.8cm;
+    object-fit: contain;
+    object-position: center;
+    background: #ffffff;
+    border: 1px solid #94a3b8;
+    border-radius: 2px;
+    display: block;
+  }
+  .fig-caption { font-family: "Helvetica Neue", Arial, sans-serif; font-size: 7.4pt; color: #1e293b; margin-top: 3px; line-height: 1.22; text-align: left; }
+  .page-break { page-break-before: always; }
+</style>
+</head>
+<body>
+
+<!-- HEADING -->
+<div class="report-header">
+  <div class="report-title">WikiPulse: Real-Time Detection and Analysis of Wikipedia Knowledge Shifts</div>
+  <div class="report-subtitle">DA231o — Data Engineering at Scale · Indian Institute of Science (IISc), Bengaluru · Final Project Report (Team QuadCore)</div>
+  <div class="authors-grid">
+    <div class="author-box"><div class="author-name">Kshama Jain</div><div class="author-email">kshamajain@iisc.ac.in</div></div>
+    <div class="author-box"><div class="author-name">Senthil Raj K</div><div class="author-email">senthilrajk@iisc.ac.in</div></div>
+    <div class="author-box"><div class="author-name">Pothukanuri Sai Venkat</div><div class="author-email">pothukanuris@iisc.ac.in</div></div>
+    <div class="author-box"><div class="author-name">Akash H S</div><div class="author-email">akashhs@iisc.ac.in</div></div>
+  </div>
+</div>
+
+<div class="kpi-strip">
+  <div class="kpi-box"><div class="kpi-val">21.45M &rarr; 12.77M</div><div class="kpi-lbl">Raw &rarr; clean events in 67 days (100% valid kept)</div></div>
+  <div class="kpi-box"><div class="kpi-val">5.83 GB churn</div><div class="kpi-lbl">60% of all edited text is rewriting</div></div>
+  <div class="kpi-box"><div class="kpi-val">65% &rarr; 9% / 0%</div><div class="kpi-lbl">False alerts: fixed rule &rarr; our score / Spark ML</div></div>
+  <div class="kpi-box"><div class="kpi-val">&lt; 1.35 s</div><div class="kpi-lbl">Dashboard query time (target &lt; 2 s)</div></div>
+</div>
+
+<!-- 1. PROBLEM -->
+<h1>1. Problem</h1>
+
+<h2>1.1 Definition</h2>
+<p>
+  Wikipedia reacts to real-world events within minutes. Elections, plane crashes, outages and public controversies cause sudden bursts of edits, new editors, large text additions or revert battles on the affected pages. The signals needed to understand these bursts are spread across several Wikimedia services: the live <strong>EventStreams</strong> feed shows edits but has no history; the <strong>MediaWiki Action API</strong> and <strong>Analytics REST API</strong> hold past edits and page views; <strong>link graphs</strong> show related pages; and <strong>revision diffs</strong>, <strong>Wikidata</strong> locations and <strong>Lift Wing</strong> revert-risk scores add context.
+</p>
+<p>
+  <strong>WikiPulse</strong> brings all of these together in one fault-tolerant platform. It compares live activity on each page with that page's own history, flags unusual activity with an explainable score and a Spark ML model, separates real news from edit wars and routine maintenance, and adds context such as related pages, text changes, a subject map and revert risk.
+</p>
+
+<h2>1.2 Motivation: Why Fixed Thresholds Fail</h2>
+<p>
+  A simple rule such as <em>"6 or more human edits in 5 minutes"</em> does not work, because normal activity on Wikipedia pages differs by more than 10,000 times:
+</p>
+<table>
+  <thead>
+    <tr><th>Activity Tier</th><th>Normal Edits per Day</th><th class="num">Share of 3.31M Pages</th><th>What Goes Wrong With a Fixed Rule</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><strong>Quiet</strong></td><td>under 0.2</td><td class="num"><strong>92.31%</strong></td><td>4–5 edits in 5 minutes is a huge change, but the rule misses it.</td></tr>
+    <tr><td><strong>Moderate</strong></td><td>0.2 to 2</td><td class="num">6.57%</td><td>Needs a per-page baseline to judge what is unusual.</td></tr>
+    <tr><td><strong>Active</strong></td><td>2 to 15</td><td class="num">1.04%</td><td>Needs editor surge and page-view checks.</td></tr>
+    <tr><td><strong>Hyperactive</strong></td><td>15 or more</td><td class="num">0.08%</td><td>Pages like <em>Deaths in 2026</em> (71 edits/day) trigger the rule every hour.</td></tr>
+  </tbody>
+</table>
+<p>
+  So a fixed rule fails both ways: it raises <strong>false alarms on busy pages</strong> (65% of its alerts were false) and <strong>misses real changes on quiet pages</strong> (only 60% recall on test cases). It also confuses edit wars with breaking news.
+</p>
+
+<h2>1.3 Design Goals</h2>
+<ul>
+  <li><strong>G1. Durable, replayable ingestion</strong> — resumable collectors, live stream with resume cursor, Apache Kafka broker and replay at 1x–100x speed.</li>
+  <li><strong>G2. Event-time correctness</strong> — 10-minute watermark and duplicate removal before building 5-minute and 1-hour windows.</li>
+  <li><strong>G3. Fault tolerance</strong> — checkpoints for every streaming stage, stable alert IDs and safe Parquet writes, so restarts never create duplicates.</li>
+  <li><strong>G4. Horizontal scaling</strong> — partitioned Parquet storage, multi-partition Kafka topics and tuned Spark shuffle settings.</li>
+  <li><strong>G5. Explainability</strong> — every alert shows a score breakdown and at least two plain-language reasons.</li>
+  <li><strong>G6. Reproducibility</strong> — synthetic test patterns, 45 automated tests and a one-command offline demo (<code>./run-demo.sh</code>).</li>
+</ul>
+
+<h2>1.4 Features Required</h2>
+<table>
+  <thead><tr><th style="width:27%;">Feature</th><th>What It Does</th></tr></thead>
+  <tbody>
+    <tr><td><strong>F1–F2. Knowledge-Shift &amp; Breaking-News Radar</strong></td><td>Scores 5-minute and 1-hour windows using edit speed, editor count, text churn, page history and related-page activity. Alerts stay "candidate" news until page views confirm them, and edit wars and major rewrites are labelled separately.</td></tr>
+    <tr><td><strong>F3. Edit-Risk Monitor</strong></td><td>Filters out routine edits in Spark, scores risky edits with Wikimedia Lift Wing, and checks the results against real reverts within 48 hours.</td></tr>
+    <tr><td><strong>F4. Global Subject Map</strong></td><td>Places alerted <em>article subjects</em> on a map using Wikipedia and Wikidata coordinates. No editor IP addresses are ever collected.</td></tr>
+    <tr><td><strong>F5. Knowledge Churn &amp; Bot Ratio</strong></td><td>Splits total edited text into net growth and rewriting, and compares human, temporary-account and bot activity.</td></tr>
+  </tbody>
+</table>
+
+<h2>1.5 Scalability &amp; Performance Goals</h2>
+<p>
+  The proposal set six performance targets: <strong>(P1)</strong> at least 99% of valid events stored; <strong>(P2)</strong> no duplicate alerts after restart or replay; <strong>(P3)</strong> each closed 5-minute window processed within 60 seconds under load; <strong>(P4)</strong> processing faster than input, with backlog draining to zero after restart; <strong>(P5)</strong> runtime, shuffle, memory and storage reported for all scale tests; <strong>(P6)</strong> dashboard queries under 2 seconds. It also set eight feature-quality targets (F1–F8), listed with results in Section 4.
+</p>
+
+<!-- 2. APPROACH AND METHODS -->
+<h1>2. Approach and Methods</h1>
+
+<h2>2.1 High-Level Design</h2>
+<p>
+  WikiPulse uses one pipeline for both live and historical data. Live edits and 67 days of history are converted to the <strong>same 29-column event format</strong>, so the same Spark code builds baselines, windows and alerts for both. The design has five layers: sources, ingestion, Spark processing, Parquet storage and the dashboard (Figure 1).
+</p>
+
+<div class="figure">
+<svg viewBox="0 0 860 400" xmlns="http://www.w3.org/2000/svg" font-family="Helvetica Neue, Arial, sans-serif">
+  <defs>
+    <marker id="ah" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto">
+      <path d="M0,0 L9,4.5 L0,9 z" fill="#334155"/>
+    </marker>
+    <marker id="ahg" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto">
+      <path d="M0,0 L9,4.5 L0,9 z" fill="#059669"/>
+    </marker>
+  </defs>
+
+  <!-- Column headers -->
+  <g font-size="12" font-weight="700" fill="#0f172a" text-anchor="middle">
+    <text x="80" y="18">1 · SOURCES</text>
+    <text x="250" y="18">2 · INGESTION</text>
+    <text x="490" y="18">3 · PROCESSING (APACHE SPARK)</text>
+    <text x="693" y="18">4 · STORAGE</text>
+    <text x="800" y="18">5 · SERVING</text>
+  </g>
+
+  <!-- 1. Sources -->
+  <g>
+    <rect x="10" y="32" width="140" height="300" rx="8" fill="#eff6ff" stroke="#93c5fd"/>
+    <g font-size="11" fill="#1e3a8a" text-anchor="middle">
+      <rect x="20" y="44" width="120" height="44" rx="5" fill="#ffffff" stroke="#3b82f6"/>
+      <text x="80" y="62" font-weight="700">EventStreams</text><text x="80" y="77" font-size="10" fill="#475569">live edit feed</text>
+      <rect x="20" y="100" width="120" height="44" rx="5" fill="#ffffff" stroke="#3b82f6"/>
+      <text x="80" y="118" font-weight="700">MediaWiki API</text><text x="80" y="133" font-size="10" fill="#475569">history, diffs, links</text>
+      <rect x="20" y="156" width="120" height="44" rx="5" fill="#ffffff" stroke="#3b82f6"/>
+      <text x="80" y="174" font-weight="700">Analytics API</text><text x="80" y="189" font-size="10" fill="#475569">daily page views</text>
+      <rect x="20" y="212" width="120" height="44" rx="5" fill="#ffffff" stroke="#3b82f6"/>
+      <text x="80" y="230" font-weight="700">Wikidata</text><text x="80" y="245" font-size="10" fill="#475569">subject locations</text>
+      <rect x="20" y="268" width="120" height="52" rx="5" fill="#ffffff" stroke="#3b82f6"/>
+      <text x="80" y="288" font-weight="700">Lift Wing ML</text><text x="80" y="303" font-size="10" fill="#475569">revert-risk scores</text>
+    </g>
+  </g>
+
+  <!-- 2. Ingestion -->
+  <g>
+    <rect x="180" y="32" width="140" height="300" rx="8" fill="#ecfdf5" stroke="#6ee7b7"/>
+    <text x="250" y="50" font-size="10" font-weight="700" fill="#047857" text-anchor="middle">LIVE PATH</text>
+    <rect x="190" y="58" width="120" height="40" rx="5" fill="#ffffff" stroke="#059669"/>
+    <text x="250" y="75" font-size="11" font-weight="700" fill="#064e3b" text-anchor="middle">Stream Collector</text>
+    <text x="250" y="89" font-size="10" fill="#475569" text-anchor="middle">+ replay 1x–100x</text>
+    <rect x="190" y="112" width="120" height="44" rx="5" fill="#064e3b" stroke="#064e3b"/>
+    <text x="250" y="131" font-size="11.5" font-weight="700" fill="#ffffff" text-anchor="middle">Apache Kafka</text>
+    <text x="250" y="146" font-size="10" fill="#d1fae5" text-anchor="middle">3 partitions</text>
+    <line x1="250" y1="98" x2="250" y2="110" stroke="#059669" stroke-width="1.6" marker-end="url(#ahg)"/>
+
+    <text x="250" y="190" font-size="10" font-weight="700" fill="#047857" text-anchor="middle">BATCH PATH</text>
+    <rect x="190" y="198" width="120" height="44" rx="5" fill="#ffffff" stroke="#059669"/>
+    <text x="250" y="216" font-size="11" font-weight="700" fill="#064e3b" text-anchor="middle">History Collectors</text>
+    <text x="250" y="231" font-size="10" fill="#475569" text-anchor="middle">67 days · 21.4M events</text>
+    <rect x="190" y="256" width="120" height="64" rx="5" fill="#ffffff" stroke="#059669"/>
+    <text x="250" y="274" font-size="11" font-weight="700" fill="#064e3b" text-anchor="middle">Clean &amp; De-duplicate</text>
+    <text x="250" y="289" font-size="10" fill="#475569" text-anchor="middle">drop noise events</text>
+    <text x="250" y="303" font-size="10" fill="#475569" text-anchor="middle">recover broken files</text>
+    <line x1="250" y1="242" x2="250" y2="254" stroke="#059669" stroke-width="1.6" marker-end="url(#ahg)"/>
+  </g>
+
+  <!-- Arrows sources -> ingestion -->
+  <line x1="150" y1="66" x2="188" y2="78" stroke="#334155" stroke-width="1.6" marker-end="url(#ah)"/>
+  <line x1="150" y1="150" x2="188" y2="218" stroke="#334155" stroke-width="1.6" marker-end="url(#ah)"/>
+
+  <!-- 3. Spark processing -->
+  <g>
+    <rect x="350" y="32" width="280" height="300" rx="8" fill="#eef2ff" stroke="#a5b4fc"/>
+    <!-- shared schema bar -->
+    <rect x="362" y="44" width="256" height="30" rx="5" fill="#4338ca"/>
+    <text x="490" y="63" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">One shared event format (29 columns)</text>
+
+    <rect x="362" y="86" width="124" height="54" rx="5" fill="#ffffff" stroke="#6366f1"/>
+    <text x="424" y="105" font-size="11" font-weight="700" fill="#312e81" text-anchor="middle">Page Baselines</text>
+    <text x="424" y="119" font-size="10" fill="#475569" text-anchor="middle">47 days of history</text>
+    <text x="424" y="132" font-size="10" fill="#475569" text-anchor="middle">3.31M pages</text>
+
+    <rect x="494" y="86" width="124" height="54" rx="5" fill="#ffffff" stroke="#6366f1"/>
+    <text x="556" y="105" font-size="11" font-weight="700" fill="#312e81" text-anchor="middle">Time Windows</text>
+    <text x="556" y="119" font-size="10" fill="#475569" text-anchor="middle">5-minute &amp; 1-hour</text>
+    <text x="556" y="132" font-size="10" fill="#475569" text-anchor="middle">streaming + batch</text>
+
+    <rect x="362" y="156" width="256" height="76" rx="5" fill="#ffffff" stroke="#6366f1"/>
+    <text x="490" y="174" font-size="11" font-weight="700" fill="#312e81" text-anchor="middle">Anomaly Detection</text>
+    <rect x="370" y="182" width="78" height="42" rx="4" fill="#f1f5f9" stroke="#cbd5e1"/>
+    <text x="409" y="199" font-size="10" font-weight="700" fill="#0f172a" text-anchor="middle">A · Fixed</text>
+    <text x="409" y="213" font-size="9.5" fill="#475569" text-anchor="middle">rule</text>
+    <rect x="452" y="182" width="78" height="42" rx="4" fill="#f1f5f9" stroke="#cbd5e1"/>
+    <text x="491" y="199" font-size="10" font-weight="700" fill="#0f172a" text-anchor="middle">B · History</text>
+    <text x="491" y="213" font-size="9.5" fill="#475569" text-anchor="middle">score 0–100</text>
+    <rect x="534" y="182" width="78" height="42" rx="4" fill="#f1f5f9" stroke="#cbd5e1"/>
+    <text x="573" y="199" font-size="10" font-weight="700" fill="#0f172a" text-anchor="middle">C · Spark ML</text>
+    <text x="573" y="213" font-size="9.5" fill="#475569" text-anchor="middle">KMeans + RF</text>
+
+    <rect x="362" y="248" width="256" height="72" rx="5" fill="#fffbeb" stroke="#f59e0b"/>
+    <text x="490" y="266" font-size="11" font-weight="700" fill="#92400e" text-anchor="middle">Context Enrichment (alerts only)</text>
+    <text x="490" y="283" font-size="10" fill="#475569" text-anchor="middle">Related-page graph · Text diffs</text>
+    <text x="490" y="297" font-size="10" fill="#475569" text-anchor="middle">Subject map · Revert risk</text>
+    <text x="490" y="311" font-size="9.5" fill="#92400e" text-anchor="middle">disk cache + offline fallback</text>
+
+    <!-- internal arrows -->
+    <line x1="424" y1="74" x2="424" y2="84" stroke="#4338ca" stroke-width="1.4" marker-end="url(#ah)"/>
+    <line x1="556" y1="74" x2="556" y2="84" stroke="#4338ca" stroke-width="1.4" marker-end="url(#ah)"/>
+    <line x1="424" y1="140" x2="440" y2="154" stroke="#334155" stroke-width="1.4" marker-end="url(#ah)"/>
+    <line x1="556" y1="140" x2="540" y2="154" stroke="#334155" stroke-width="1.4" marker-end="url(#ah)"/>
+    <line x1="490" y1="232" x2="490" y2="246" stroke="#334155" stroke-width="1.4" marker-end="url(#ah)"/>
+  </g>
+
+  <!-- Arrows ingestion -> spark -->
+  <polyline points="310,134 335,134 335,59 360,59" fill="none" stroke="#334155" stroke-width="1.6" marker-end="url(#ah)"/>
+  <polyline points="310,288 335,288 335,134" fill="none" stroke="#334155" stroke-width="1.6"/>
+  <text x="341" y="100" font-size="9" fill="#475569" text-anchor="middle" transform="rotate(-90 341 100)">stream</text>
+  <text x="341" y="215" font-size="9" fill="#475569" text-anchor="middle" transform="rotate(-90 341 215)">batch</text>
+  <!-- other APIs to enrichment -->
+  <polyline points="140,320 140,348 345,348 345,300 358,300" fill="none" stroke="#f59e0b" stroke-width="1.4" stroke-dasharray="4 3" marker-end="url(#ah)"/>
+  <text x="250" y="361" font-size="9" fill="#92400e" text-anchor="middle">context calls: diffs · links · locations · revert risk</text>
+
+  <!-- 4. Storage -->
+  <g>
+    <rect x="652" y="32" width="82" height="300" rx="8" fill="#fdf2f8" stroke="#f9a8d4"/>
+    <!-- cylinder -->
+    <ellipse cx="693" cy="130" rx="32" ry="9" fill="#be185d"/>
+    <rect x="661" y="130" width="64" height="80" fill="#be185d"/>
+    <ellipse cx="693" cy="210" rx="32" ry="9" fill="#9d174d"/>
+    <ellipse cx="693" cy="130" rx="32" ry="9" fill="#ec4899"/>
+    <text x="693" y="166" font-size="11" font-weight="700" fill="#ffffff" text-anchor="middle">Parquet</text>
+    <text x="693" y="181" font-size="10" fill="#fce7f3" text-anchor="middle">Lake</text>
+    <text x="693" y="240" font-size="10" fill="#831843" text-anchor="middle">11 tables</text>
+    <text x="693" y="254" font-size="10" fill="#831843" text-anchor="middle">split by day</text>
+    <text x="693" y="268" font-size="10" fill="#831843" text-anchor="middle">Snappy</text>
+  </g>
+  <line x1="630" y1="182" x2="659" y2="172" stroke="#334155" stroke-width="1.6" marker-end="url(#ah)"/>
+
+  <!-- 5. Serving -->
+  <g>
+    <rect x="752" y="32" width="98" height="300" rx="8" fill="#fff1f2" stroke="#fda4af"/>
+    <rect x="762" y="110" width="78" height="110" rx="5" fill="#ffffff" stroke="#e11d48"/>
+    <text x="801" y="132" font-size="11" font-weight="700" fill="#881337" text-anchor="middle">Dash +</text>
+    <text x="801" y="146" font-size="11" font-weight="700" fill="#881337" text-anchor="middle">Plotly</text>
+    <text x="801" y="166" font-size="10" fill="#475569" text-anchor="middle">8 screens</text>
+    <text x="801" y="182" font-size="10" fill="#475569" text-anchor="middle">live, history,</text>
+    <text x="801" y="196" font-size="10" fill="#475569" text-anchor="middle">map, ML</text>
+    <text x="801" y="244" font-size="10" font-weight="700" fill="#881337" text-anchor="middle">&lt; 1.35 s</text>
+    <text x="801" y="258" font-size="10" fill="#881337" text-anchor="middle">per query</text>
+  </g>
+  <line x1="734" y1="170" x2="760" y2="170" stroke="#334155" stroke-width="1.6" marker-end="url(#ah)"/>
+
+  <!-- Bottom reliability band -->
+  <rect x="10" y="368" width="840" height="26" rx="5" fill="#f1f5f9" stroke="#cbd5e1"/>
+  <text x="430" y="385" font-size="10.5" fill="#0f172a" text-anchor="middle"><tspan font-weight="700">Reliability across all layers:</tspan> streaming checkpoints · 10-min watermark · stable alert IDs (no duplicates) · safe Parquet commits · 45 automated tests</text>
+</svg>
+<div class="figure-caption"><strong>Figure 1.</strong> WikiPulse end-to-end architecture. Live and historical data share one event format and one set of Spark jobs.</div>
+</div>
+
+<h2>2.2 Architecture &amp; Data Model</h2>
+<p>
+  We collected <strong>67 days of English Wikipedia activity</strong> (15 Sep – 20 Nov 2026): <strong>21.45 million raw events</strong>, 1.46 GB compressed (about 9.6 GB as plain JSON). During cleaning we solved three practical problems: (1) we <strong>recovered 269,017 rows</strong> from a half-written compressed file left by an interrupted run; (2) we <strong>removed 8.68 million (40%) category-maintenance events</strong> and duplicate events at day boundaries, while keeping 100% of valid edits; and (3) we gave live edits that arrive without a page ID a stable generated ID, so they are never lost or mixed up.
+</p>
+<p>
+  The proposal planned 5 data models; we built <strong>8 schemas plus 2 summary tables</strong>, all stored as Parquet:
+</p>
+<table>
+  <thead>
+    <tr><th style="width:24%;">Table</th><th class="num" style="width:20%;">Rows (67 days)</th><th>What It Stores</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>rc_events</code></td><td class="num"><strong>12,773,366</strong></td><td>Clean edit events in the shared 29-column format, split by day.</td></tr>
+    <tr><td><code>page_baselines</code></td><td class="num"><strong>3,307,257</strong></td><td>Each page's normal activity over 47 days, its activity tier and page views.</td></tr>
+    <tr><td><code>page_windows_5m / 1h</code></td><td class="num">970,793 + 525,714</td><td>Per-page activity in 5-minute and 1-hour windows (edits, editors, bytes, surge).</td></tr>
+    <tr><td><code>alerts</code></td><td class="num">10,631</td><td>Detector outputs, alert type, plain-language reasons and score breakdown.</td></tr>
+    <tr><td><code>graph_edges</code></td><td class="num">608</td><td>Links to and from alerted pages, marked if also edited in the same window.</td></tr>
+    <tr><td><code>revision_diffs</code></td><td class="num">100</td><td>Cleaned text snippets of what changed in each revision.</td></tr>
+    <tr><td><code>map_points</code></td><td class="num">160</td><td>Subject coordinates with location source and quality.</td></tr>
+    <tr><td><code>revert_risk_eval</code></td><td class="num">120</td><td>Lift Wing risk score, fallback score and actual 48-hour revert result.</td></tr>
+    <tr><td><code>churn_bot_summary</code>, <code>rankings_daily</code></td><td class="num">1,623 &amp; 23,535</td><td>Daily summaries of churn, bot share and top surging pages for fast dashboards.</td></tr>
+  </tbody>
+</table>
+
+<h2>2.3 Big Data Platforms Used</h2>
+<ul>
+  <li><strong>Apache Kafka 3.9.1 (KRaft mode, no ZooKeeper):</strong> holds the live edit stream in 3-partition topics with safe, duplicate-free producers. A file-based fallback lets the system run without Docker.</li>
+  <li><strong>Apache Spark 4.2.0 (DataFrames &amp; Structured Streaming):</strong> does all cleaning, baselines, streaming windows and scoring. RDDs are used only in Experiment 3 for comparison.</li>
+  <li><strong>Spark ML, Parquet, PyArrow and Dash/Plotly:</strong> Spark ML trains the detection models, Parquet gives compact column storage that can skip unneeded days, PyArrow reads it quickly, and Dash/Plotly serve the 8-screen dashboard.</li>
+</ul>
+
+<h2>2.4 ML Methods Used</h2>
+<p>Every time window is checked by three detectors, and risky edits get a revert-risk score:</p>
+<ul>
+  <li><strong>Detector A — Fixed Rule (baseline for comparison):</strong> flags a window if it has at least 6 human edits by 3 editors in 5 minutes (or 15 edits by 4 editors in 1 hour).</li>
+  <li><strong>Detector B — Explainable History Score (0–100):</strong> compares the window with the page's own 47-day history using five parts — edit speed, editor surge, text churn, revert behaviour and page views. The parts add up exactly to the final score, so users can see why an alert fired. Bot-only activity is ignored and routine activity on busy pages is down-weighted. Alerts are labelled <strong>Confirmed News</strong>, <strong>Breaking-News Candidate</strong>, <strong>Edit War</strong> or <strong>Major Rewrite</strong>.</li>
+  <li><strong>Detector C — Spark ML (two stages):</strong> <em>KMeans</em> groups windows into 6 editing patterns (e.g. normal quiet, edit war, collaborative surge, bot maintenance) and measures how far each window is from "normal". A <em>Random Forest</em> (40 trees) then uses this distance plus 8 activity features to score the window. Number of editors and number of human edits matter most.</li>
+  <li><strong>Revert Risk (Wikimedia Lift Wing):</strong> Spark first filters out 75% of routine edits; the rest are scored by Lift Wing, with a simple rule-based fallback if the service is down. Scores are checked against actual reverts within 48 hours to pick the best threshold.</li>
+</ul>
+
+<!-- 3. EVALUATION -->
+<h1 class="page-break">3. Evaluation</h1>
+
+<h2>3.1 Experiment Design</h2>
+<p>We ran all six experiments from the proposal:</p>
+<table>
+  <thead><tr><th style="width:27%;">Experiment</th><th>What We Did</th></tr></thead>
+  <tbody>
+    <tr><td><strong>1. Correctness &amp; Replay</strong></td><td>Compared Spark totals with a hand-written Python check on 2,000 events; replayed one day (182,521 events) with 30% duplicates added.</td></tr>
+    <tr><td><strong>2. Detector Comparison</strong></td><td>Ran Detectors A, B and C on 5 injected shift patterns, 2 negative controls, 8 days of real data and a manually reviewed 200-window sample.</td></tr>
+    <tr><td><strong>3. DataFrame vs. RDD</strong></td><td>Same 7-day churn job (747,156 edits) written both ways.</td></tr>
+    <tr><td><strong>4. Scaling</strong></td><td>Varied CPU cores (1–6), data per core, shuffle partitions (4–128) and input size (1–46 days, up to 8.43M rows).</td></tr>
+    <tr><td><strong>5. Streaming &amp; Recovery</strong></td><td>Replayed at 1x–100x speed; stopped mid-day, built a 123,537-event backlog and restarted.</td></tr>
+    <tr><td><strong>6. Storage &amp; Query Speed</strong></td><td>Compared queries on raw compressed JSON with queries on stored Parquet for every dashboard view.</td></tr>
+  </tbody>
+</table>
+
+<h2>3.2 Scalability &amp; Performance Metrics</h2>
+<table>
+  <thead>
+    <tr>
+      <th>Experiment 4 Test</th><th class="center">Setup</th><th class="num">Input Rows</th><th class="num">Runtime</th>
+      <th class="num">Speedup / Throughput</th><th class="num">Shuffle</th><th class="num">Peak Memory</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td><strong>Strong scaling</strong> (14 days)</td><td class="center">1 core</td><td class="num">2.47M</td><td class="num">18.97 s</td><td class="num">1.00x</td><td class="num">281 MB</td><td class="num">628 MB</td></tr>
+    <tr><td><strong>Strong scaling</strong></td><td class="center">2 cores</td><td class="num">2.47M</td><td class="num">12.20 s</td><td class="num">1.55x</td><td class="num">281 MB</td><td class="num">846 MB</td></tr>
+    <tr><td><strong>Strong scaling</strong></td><td class="center"><strong>4 cores</strong></td><td class="num">2.47M</td><td class="num"><strong>11.21 s</strong></td><td class="num"><strong>1.69x</strong></td><td class="num">281 MB</td><td class="num">1,046 MB</td></tr>
+    <tr><td><strong>Strong scaling</strong></td><td class="center">6 cores</td><td class="num">2.47M</td><td class="num">12.40 s</td><td class="num">1.53x</td><td class="num">281 MB</td><td class="num">1,139 MB</td></tr>
+    <tr><td><strong>Weak scaling</strong> (4 days/core)</td><td class="center">1 &rarr; 2 &rarr; 4 &rarr; 6 cores</td><td class="num">0.72M &rarr; 4.20M</td><td class="num">6.8 &rarr; 19.2 s</td><td class="num">peak 250k rows/s</td><td class="num">102 &rarr; 462 MB</td><td class="num">~1.0–1.3 GB</td></tr>
+    <tr><td><strong>Input size</strong></td><td class="center">1 &rarr; 46 days</td><td class="num">0.19M &rarr; 8.43M</td><td class="num">2.4 &rarr; 38.1 s</td><td class="num">221k rows/s (linear)</td><td class="num">26 &rarr; 861 MB</td><td class="num">0.7–1.1 GB</td></tr>
+  </tbody>
+</table>
+<ul>
+  <li><strong>Experiment 3 — DataFrame vs. RDD:</strong> DataFrames took 1.3–2.2 s versus 2.7–6.2 s for RDDs, a <strong>2.0x–2.9x speedup</strong>, because Spark's optimizer avoids slow Python serialization.</li>
+  <li><strong>Experiment 4 — Shuffle partitions:</strong> <strong>16 partitions was fastest (10.0 s)</strong>; 128 partitions took 18.1 s due to task overhead. Using 16 cut runtime by 45%. Speedup stops after 4 cores because shuffle and memory costs grow on a single laptop. In weak scaling, efficiency stayed high at 2 cores (0.93) and dropped to 0.61 at 4 cores, for the same reason.</li>
+  <li><strong>Experiment 5 — Streaming &amp; recovery:</strong> at 1x–100x replay speed, Spark processed <strong>2,266–55,834 rows/s</strong>, far above the input rate (2–211 rows/s), and closed each 5-minute window in <strong>0.4–9.5 s</strong> (target 60 s). After a forced stop, it cleared a <strong>123,537-event backlog in 13.7 s</strong> with <strong>zero duplicate alerts</strong> and the same 39 alerts as an uninterrupted run.</li>
+  <li><strong>Experiment 6 — Query speed:</strong> scanning one day of raw compressed JSON took 2.2–3.2 s; Parquet queries took <strong>0.003–1.34 s</strong> across all views, about <strong>14.5x faster</strong> and within the 2-second target.</li>
+</ul>
+
+<h2>3.3 Feature Metrics</h2>
+<ul>
+  <li><strong>Experiment 1 — Correctness:</strong> Spark totals matched the hand-written check <strong>exactly</strong> on all 2,000 events (edits, humans, bots, bytes added, removed and rewritten), and replay with 30% duplicates produced <strong>0 duplicate alerts</strong>.</li>
+  <li><strong>Experiment 2 — Detector comparison:</strong> the fixed rule missed a 2-editor major rewrite and a burst on a quiet page (60% recall) and falsely fired on routine busy-page activity. Detectors B and C found <strong>all 5 test shifts</strong> with 4–5 reasons each and no false triggers.</li>
+</ul>
+<table>
+  <thead>
+    <tr><th>Detector</th><th class="num">Alerts (8 days)</th><th class="num">Precision</th><th class="num">False-Alert Rate</th><th class="num">Reviewed Sample False Alerts</th><th class="center">Test Recall</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><strong>A: Fixed Rule</strong></td><td class="num">349</td><td class="num">34.96%</td><td class="num"><strong>65.04%</strong></td><td class="num">41.32%</td><td class="center">3 / 5</td></tr>
+    <tr><td><strong>B: History Score</strong></td><td class="num">1,028</td><td class="num"><strong>90.86%</strong></td><td class="num"><strong>9.14%</strong></td><td class="num">1.55%</td><td class="center"><strong>5 / 5</strong></td></tr>
+    <tr><td><strong>C: Spark ML</strong></td><td class="num">817</td><td class="num"><strong>100.00%</strong></td><td class="num"><strong>0.00%</strong></td><td class="num">0.00%</td><td class="center"><strong>5 / 5</strong></td></tr>
+  </tbody>
+</table>
+<ul>
+  <li><strong>Context features:</strong> 100% of revision diffs gave usable change data; 57% of related-page links were also edited in the same window; 77% of alerted subjects were placed on the map, and the rest were kept as "unlocated" (never dropped). Revert-risk scores were available for 100% of edits; lowering the threshold from 0.80 to <strong>0.65 raised F1 from 68.6% to 76.9%</strong> (recall 83%).</li>
+  <li><strong>67-day insights:</strong> of 11.59M content edits, registered humans made 67%, bots 26% and temporary accounts 8%. Of 5.83 GB of edited text, <strong>60% was rewriting</strong> and only 38% was net new content.</li>
+</ul>
+<table>
+  <thead><tr><th style="width:26%;">Real Case &amp; Alert Type</th><th>Activity</th><th>Detector Result</th><th>Context</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Confirmed News</strong><br/><em>2026 US Senate elections</em></td><td>42 edits, 11 editors in 1 hour; no reverts</td><td>A: yes · B: 97.9 · C: 87.8<br/>Page views 29.7x normal</td><td>Related pages edited together; result-update diffs</td></tr>
+    <tr><td><strong>Breaking-News Candidate</strong><br/><em>Palm Beach Learjet crash</em></td><td>14 edits, 6 editors in 1 hour</td><td><strong>A: missed</strong> · B: 87.0 · C: 80.0</td><td>"FAA &amp; NTSB investigation" added; exact crash location</td></tr>
+    <tr><td><strong>Edit War</strong><br/><em>Keisha Lance Bottoms</em></td><td>45 edits, 25 editors; 58% reverts</td><td>A: wrongly called news · B: 100 · C: 96.4</td><td>Diffs show repeated reverts</td></tr>
+    <tr><td><strong>Major Rewrite</strong><br/><em>Mike Ditka</em></td><td>15 edits by only 2 editors</td><td><strong>A: missed</strong> · B: 84.8 · C: 64.2</td><td>Large biography expansion</td></tr>
+  </tbody>
+</table>
+
+<h2>3.4 Plots and Analysis</h2>
+<p>We built an <strong>8-screen interactive dashboard</strong> (planned: 4). The 10 application screenshots below (2-by-2 half-width layout) capture every live, replay, investigation, geospatial, graph, ML, and health view:</p>
+<div class="fig-grid">
+  <div class="fig-card"><img src="screenshots/01_live_pulse.png" alt="Live Pulse" /><div class="fig-caption"><strong>Fig 2 — Live Pulse (/):</strong> Real-time Wikimedia EventStreams SSE &rarr; Kafka &rarr; Spark monitor showing live article edits, human/bot split, and byte movement.</div></div>
+  <div class="fig-card"><img src="screenshots/09_live_replay.png" alt="Live Replay" /><div class="fig-caption"><strong>Fig 3 — Live Replay Mode:</strong> Deterministic 1x–100x historical day replay over stored activity with synchronized window updates.</div></div>
+  <div class="fig-card"><img src="screenshots/02_page_investigation.png" alt="Page Investigation — US Senate Elections" /><div class="fig-caption"><strong>Fig 4 — Page Investigation (2026 US Senate elections):</strong> Additive knowledge-shift evidence table, observed hourly edits, and historical &mu; + 2&sigma; baseline band.</div></div>
+  <div class="fig-card"><img src="screenshots/10_page_inspection.png" alt="Page Inspection — Microsoft Outage" /><div class="fig-caption"><strong>Fig 5 — Page Inspection (2026 Microsoft outage):</strong> Real-time activity bursts, gross vs. net content movement, and contributor balance during a breaking cloud outage.</div></div>
+  <div class="fig-card"><img src="screenshots/03_historical_intelligence.png" alt="Historical Intelligence" /><div class="fig-caption"><strong>Fig 6 — Historical Intelligence (/historical):</strong> 67-day gross text churn (5.83 GB), rewriting volume decomposition (60.2%), and human vs. bot edit split.</div></div>
+  <div class="fig-card"><img src="screenshots/04_geospatial_map.png" alt="Geospatial Map" /><div class="fig-caption"><strong>Fig 7 — Privacy-Preserving Subject Map (/geospatial-map):</strong> Alerted article subjects mapped via 2-tier Wikipedia &amp; Wikidata coordinates (zero editor IPs).</div></div>
+  <div class="fig-card"><img src="screenshots/05_context_graph_risk.png" alt="Context Graph Risk" /><div class="fig-caption"><strong>Fig 8 — Context, Spillover Graph &amp; Risk (/contextual-features):</strong> Hub-and-spoke related-page spillover network, sanitized Compare diffs, and Lift Wing revert-risk calibration.</div></div>
+  <div class="fig-card"><img src="screenshots/06_anomaly_scoring.png" alt="Anomaly Scoring" /><div class="fig-caption"><strong>Fig 9 — Explainable Anomaly Scoring (/anomaly-scoring):</strong> Detector A, B, and C overlap, precision comparison, and single-alert additive score inspector.</div></div>
+  <div class="fig-card"><img src="screenshots/07_ml_reports.png" alt="ML Reports" /><div class="fig-caption"><strong>Fig 10 — Spark ML Tests &amp; Reports (/ml-reports):</strong> Unsupervised KMeans (k=6) behavioral cluster profiles and RandomForest feature importances.</div></div>
+  <div class="fig-card"><img src="screenshots/08_engineering_health.png" alt="Engineering Health" /><div class="fig-caption"><strong>Fig 11 — Engineering &amp; Health (/system):</strong> Strong/weak scaling curves, shuffle partition tuning, streaming capacity, and lakehouse footprint.</div></div>
+</div>
+<p>
+  <strong>Analysis:</strong> comparing each page with its own history is the key idea. It catches small bursts on quiet pages and ignores normal noise on busy pages. The explainable score tells users <em>why</em> an alert fired, while Spark ML adds a very precise second filter. Filtering in Spark before calling external services keeps enrichment fast enough for interactive use.
+</p>
+
+<!-- 4. SUMMARY -->
+<h1 class="page-break">4. Summary</h1>
+
+<h2>4.1 Ability to Achieve Design and Performance Goals w.r.t. Proposal</h2>
+<p>
+  WikiPulse met <strong>all 5 features, 6 experiments, 6 performance goals and 8 feature goals</strong> from the proposal. It also went beyond the plan: 8 schemas instead of 5 (plus 2 summary tables) and 8 dashboard screens instead of 4, backed by 45 automated tests.
+</p>
+<table>
+  <thead><tr><th class="center">ID</th><th>Goal</th><th class="center">Target</th><th>Result</th><th class="center">Status</th></tr></thead>
+  <tbody>
+    <tr><td class="center"><strong>P1</strong></td><td>Valid events stored</td><td class="center">&ge; 99%</td><td><strong>100%</strong> (12.77M of 12.77M; 269k rows recovered)</td><td class="center"><span class="badge-pass">MET</span></td></tr>
+    <tr><td class="center"><strong>P2</strong></td><td>No duplicate alerts after restart</td><td class="center">0</td><td><strong>0 duplicates</strong> (39 of 39 unique alerts)</td><td class="center"><span class="badge-pass">MET</span></td></tr>
+    <tr><td class="center"><strong>P3</strong></td><td>5-minute window latency under load</td><td class="center">&lt; 60 s</td><td><strong>0.4–9.5 s</strong> at 1x–100x speed</td><td class="center"><span class="badge-pass">MET</span></td></tr>
+    <tr><td class="center"><strong>P4</strong></td><td>Keeps up with input; backlog clears</td><td class="center">Backlog &rarr; 0</td><td>2,266–55,834 rows/s; <strong>123,537 backlog cleared in 13.7 s</strong></td><td class="center"><span class="badge-pass">MET</span></td></tr>
+    <tr><td class="center"><strong>P5</strong></td><td>Runtime, shuffle, memory, storage reported</td><td class="center">All 4</td><td>Reported for all scaling and RDD tests</td><td class="center"><span class="badge-pass">MET</span></td></tr>
+    <tr><td class="center"><strong>P6</strong></td><td>Dashboard query time</td><td class="center">&lt; 2 s</td><td><strong>0.003–1.34 s</strong> (~14.5x faster than raw)</td><td class="center"><span class="badge-pass">MET</span></td></tr>
+    <tr><td class="center"><strong>F1</strong></td><td>Test shifts found with &ge; 2 reasons</td><td class="center">100%</td><td><strong>5 / 5</strong>; all 10,631 real alerts have &ge; 2 reasons (avg 4)</td><td class="center"><span class="badge-pass">MET</span></td></tr>
+    <tr><td class="center"><strong>F2</strong></td><td>Fewer false alerts than fixed rule</td><td class="center">Lower</td><td><strong>65% &rarr; 9% (B) and 0% (C)</strong></td><td class="center"><span class="badge-pass">MET</span></td></tr>
+    <tr><td class="center"><strong>F3</strong></td><td>Usable revision diffs</td><td class="center">&ge; 90%</td><td><strong>100%</strong> (100 of 100)</td><td class="center"><span class="badge-pass">MET</span></td></tr>
+    <tr><td class="center"><strong>F4</strong></td><td>Usable revert-risk scores</td><td class="center">&ge; 95%</td><td><strong>100%</strong> (~90% Lift Wing + ~10% fallback)</td><td class="center"><span class="badge-pass">MET</span></td></tr>
+    <tr><td class="center"><strong>F5</strong></td><td>Risk threshold checked against real reverts</td><td class="center">Curve</td><td>Best threshold 0.65; <strong>F1 68.6% &rarr; 76.9%</strong></td><td class="center"><span class="badge-pass">MET</span></td></tr>
+    <tr><td class="center"><strong>F6</strong></td><td>Map points tagged; unlocated kept</td><td class="center">100%</td><td><strong>100%</strong> tagged (77% located, 0 editor IPs)</td><td class="center"><span class="badge-pass">MET</span></td></tr>
+    <tr><td class="center"><strong>F7</strong></td><td>Churn totals match manual check</td><td class="center">Exact</td><td><strong>Exact match</strong> on 2,000 events</td><td class="center"><span class="badge-pass">MET</span></td></tr>
+    <tr><td class="center"><strong>F8</strong></td><td>History views show data freshness</td><td class="center">Shown</td><td>Last-available date and missing-data flags shown</td><td class="center"><span class="badge-pass">MET</span></td></tr>
+  </tbody>
+</table>
+
+<h2>4.2 Key Lessons</h2>
+<ul>
+  <li><strong>Compare each page with its own past.</strong> Because 92% of pages are almost always quiet and a few are always busy, a page-specific baseline (that also counts the hours with no edits) was essential for catching quiet-page bursts while ignoring busy-page noise.</li>
+  <li><strong>Explainable scoring and ML work best together.</strong> The history score tells analysts exactly why an alert fired; Spark ML acts as a second, very precise filter.</li>
+  <li><strong>Filter first, enrich later.</strong> Removing 75% of routine edits in Spark and caching API responses on disk kept graph, diff, map and revert-risk context fast enough for an interactive dashboard.</li>
+  <li><strong>Plan for messy real-world data.</strong> Broken files, missing page IDs and duplicate events all appeared in practice; checkpoints, stable IDs and safe writes made restarts and replays safe.</li>
+</ul>
+
+<h2>4.3 Future Extensions</h2>
+<ol>
+  <li><strong>Deploy and host:</strong> move from a single laptop to a cloud cluster (managed Kafka, Spark on Kubernetes or Dataproc, cloud object storage) and host the dashboard publicly with monitoring and alerting.</li>
+  <li><strong>Better validation:</strong> build a larger, human-labelled set of real events with several reviewers, and compare alerts against news timelines to measure precision and recall more reliably.</li>
+  <li><strong>Multiple language support:</strong> extend beyond English Wikipedia to other language editions, linking the same topic across languages through Wikidata to spot events that break first in regional wikis.</li>
+  <li><strong>Speed-up experiments:</strong> run scaling tests on a real multi-node cluster, and try caching, better partitioning and faster file formats to push throughput further.</li>
+  <li><strong>Multi-hop graph with Apache Spark GraphFrames:</strong> upgrade the current 1-hop Spark SQL link/backlink join to <strong>Apache Spark GraphFrames</strong> for distributed multi-hop neighborhood propagation, connected-component discovery, and PageRank centrality across related articles, tracking how breaking topics cascade across whole clusters in real time.</li>
+</ol>
+
+</body>
+</html>

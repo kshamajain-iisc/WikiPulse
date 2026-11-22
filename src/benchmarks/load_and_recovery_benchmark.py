@@ -41,6 +41,19 @@ from src.config.settings import CURATED_TABLES, get_spark_session, safe_read_par
 from src.models.schemas import RAW_EDIT_SCHEMA
 
 
+def _read_alert_batches(spark: SparkSession, alerts_dir: Path) -> DataFrame:
+    """Read all committed `batch_*` Parquet subdirectories without passing a glob wildcard to
+    Spark (which triggers a noisy FileStreamSink.hasMetadata FileNotFoundException warning)."""
+    batch_dirs = [
+        str(p)
+        for p in sorted(alerts_dir.glob("batch_*"))
+        if p.is_dir() and any(p.glob("*.parquet"))
+    ]
+    if not batch_dirs:
+        return spark.createDataFrame([], schema="alert_id STRING")
+    return spark.read.parquet(*batch_dirs)
+
+
 def _score_and_commit_microbatch(
     batch_df: DataFrame,
     batch_id: int,
@@ -325,7 +338,7 @@ def run_controlled_stop_restart_recovery_benchmark(
         ref_q.awaitTermination(timeout=120)
         ref_q.stop()
 
-        ref_alerts_df = spark.read.parquet(str(ref_root / "alerts" / "batch_*"))
+        ref_alerts_df = _read_alert_batches(spark, ref_root / "alerts")
         ref_alert_ids = {str(r["alert_id"]) for r in ref_alerts_df.select("alert_id").collect()}
         print(f"  • Uninterrupted Reference Run : {len(ref_alert_ids)} distinct alerts across {sum(batch_counts.values()):,} events")
 
@@ -365,7 +378,7 @@ def run_controlled_stop_restart_recovery_benchmark(
         q1.awaitTermination(timeout=120)
         q1.stop()
 
-        pre_stop_alerts = int(spark.read.parquet(str(rec_alerts / "batch_*")).count())
+        pre_stop_alerts = int(_read_alert_batches(spark, rec_alerts).count())
         print(
             f"  • Phase 1 (Before Stop)       : Processed {pre_stop_events:,} events ({len(phase1_logs)} batches) | "
             f"alerts={pre_stop_alerts} | backlog=0"
@@ -426,7 +439,7 @@ def run_controlled_stop_restart_recovery_benchmark(
         # Ensure final state after all files are committed is 0
         final_backlog = 0
 
-        post_alerts_df = spark.read.parquet(str(rec_alerts / "batch_*"))
+        post_alerts_df = _read_alert_batches(spark, rec_alerts)
         total_post_alerts = int(post_alerts_df.count())
         post_alert_ids = {str(r["alert_id"]) for r in post_alerts_df.select("alert_id").collect()}
         distinct_post_alerts = len(post_alert_ids)

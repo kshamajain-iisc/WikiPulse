@@ -7,7 +7,20 @@ from dash.exceptions import PreventUpdate
 
 from dashboards.components import notice
 from dashboards.layout import navigation
-from dashboards.pages import historical, investigation, live, relationships, system
+from dashboards.pages import (
+    anomaly_scoring,
+    contextual_features,
+    geospatial_map,
+    historical,
+    investigation,
+    live,
+    milestone4,
+    milestone5,
+    milestone6,
+    ml_reports,
+    relationships,
+    system,
+)
 from dashboards.time_utils import format_india_time
 from src.local_supervisor import request_restart_from_ui, stream_health
 
@@ -15,8 +28,15 @@ PAGES = {
     "/": ("live", live),
     "/investigation": ("investigation", investigation),
     "/historical": ("historical", historical),
+    "/anomaly-scoring": ("anomaly_scoring", anomaly_scoring),
+    "/ml-reports": ("ml_reports", ml_reports),
+    "/contextual-features": ("contextual_features", contextual_features),
+    "/geospatial-map": ("geospatial_map", geospatial_map),
     "/relationships": ("relationships", relationships),
     "/system": ("system", system),
+    "/milestone4": ("milestone4", milestone4),
+    "/milestone5": ("milestone5", milestone5),
+    "/milestone6": ("milestone6", milestone6),
 }
 
 def render_dashboard(service, pathname, search, duration, view, title, start, end,
@@ -27,10 +47,17 @@ def render_dashboard(service, pathname, search, duration, view, title, start, en
         return [notice("Page not found", "Choose a dashboard from the sidebar.")], "Unknown route", [], navigation()
     page_name, page_module = route
     # Article links are ordinary shareable URLs; dropdown selection is also supported.
-    linked_title = parse_qs((search or "").lstrip("?")).get("title", [None])[0]
+    query = parse_qs((search or "").lstrip("?"))
+    linked_title = query.get("title", [None])[0]
     selected_title = linked_title or title
+    load_view = view
+    load_start = start
+    if page_name == "geospatial_map":
+        load_view = query.get("mode", ["days"])[0]
+        load_start = query.get("range", ["67d"])[0]
+        selected_title = query.get("region", ["ALL"])[0]
     data = service.load(
-        page_name, duration, view, selected_title, start, end,
+        page_name, duration, load_view, selected_title, load_start, end,
         replay_frame=replay_frame, replay_speed=replay_speed,
     )
     if data.get("error"):
@@ -60,6 +87,20 @@ def render_dashboard(service, pathname, search, duration, view, title, start, en
                 f"{mode} · {data.get('scope', 'Waiting for observations')}{range_label} · "
                 f"Source: {source} · Latest event: {latest_label or 'unavailable'}"
             )
+    elif page_name in (
+        "historical",
+        "anomaly_scoring",
+        "ml_reports",
+        "contextual_features",
+        "geospatial_map",
+        "milestone4",
+        "milestone5",
+        "milestone6",
+    ):
+        status = (
+            "HISTORICAL CURATED LAKE (ingest_curate · 2026-09-15 – 2026-11-20) · Last refresh: "
+            + data.get("loaded_at", "pending")
+        )
     else:
         status = "READ-ONLY EVIDENCE · Last refresh: " + data.get("loaded_at", "pending")
     titles = data.get("articles") or [row["title"] for row in data.get("rankings", [])]
@@ -69,7 +110,7 @@ def render_dashboard(service, pathname, search, duration, view, title, start, en
     return page_module.render(data), status, options, navigation(pathname)
 
 
-def register_callbacks(app, service):
+def register_callbacks(app, service, activity_workspace=None):
     @app.callback(
         Output("page-body", "children"), Output("source-status", "children"),
         Output("article", "options"),
@@ -81,13 +122,27 @@ def register_callbacks(app, service):
     )
     def refresh_page(pathname, search, tick, duration, view, title, historical_range, replay_frame, replay_speed):
         path = pathname or "/"
+        if activity_workspace is not None and path in ("/", "/investigation"):
+            # These routes use their independent asynchronous serving boundary.
+            return [], "", []
         # Historical evidence is driven by its date controls; relationship and
         # health views change only on navigation. Ignore irrelevant global
         # controls and timer ticks so they cannot queue expensive Spark work.
         triggered = set(ctx.triggered_prop_ids)
-        if path in ("/historical", "/relationships", "/system") and triggered:
+        if path in (
+            "/historical",
+            "/anomaly-scoring",
+            "/ml-reports",
+            "/contextual-features",
+            "/geospatial-map",
+            "/relationships",
+            "/system",
+            "/milestone4",
+            "/milestone5",
+            "/milestone6",
+        ) and triggered:
             allowed = {"location.pathname"}
-            if path == "/historical":
+            if path in ("/historical", "/milestone4"):
                 allowed.add("historical-range.value")
             if not triggered.intersection(allowed):
                 raise PreventUpdate
@@ -114,26 +169,37 @@ def register_callbacks(app, service):
         # A slow query must finish before the timer can request another snapshot.
         # Keep the user's pause choice when the running callback finishes.
         live_route = pathname in (None, "/", "/investigation")
-        return bool(busy) or "pause" in (value or []) or view == "replay" or not live_route
+        return (activity_workspace is not None and live_route) or bool(busy) or "pause" in (value or []) or view == "replay" or not live_route
 
     @app.callback(
         Output("loading-banner", "style"),
         Output("loading-title", "children"), Output("loading-description", "children"),
+        Output("backend-loading-icon", "className"),
         Input("refresh-busy", "data"), Input("location", "pathname"), Input("view", "value"),
     )
     def loading_copy(busy, pathname, view):
+        if activity_workspace is not None and pathname in ("/", "/investigation"):
+            return {"display": "none"}, "Loading activity", "See the processing console for measured progress.", "backend-loading-pill"
         if view == "replay" and pathname in ("/", "/investigation"):
             title, description = "Selecting replay window", "Reading the stored activity around this replay point…"
         else:
             copy = {
                 "/": ("Refreshing live pulse", "Reading recent edits and activity trends…"),
                 "/investigation": ("Loading article evidence", "Filtering recent activity and saved context for this page…"),
-                "/historical": ("Loading historical intelligence", "Reading daily rankings and baseline coverage…"),
+                "/historical": ("Loading historical intelligence", "Reading daily rankings, anomaly density, and baseline coverage…"),
+                "/anomaly-scoring": ("Loading anomaly scoring", "Reading multi-detector scores, component weights, and case studies…"),
+                "/ml-reports": ("Loading ML tests & reports", "Reading Spark ML models, synthetic injection tests, and false-alert audits…"),
+                "/contextual-features": ("Loading contextual features", "Reading topic graph spillover, revision diffs, subject geography, and Lift Wing risk…"),
+                "/geospatial-map": ("Loading geospatial map", "Aggregating regional recentchanges edits across days and windows…"),
                 "/relationships": ("Loading relationship evidence", "Reading co-edit links and available locations…"),
                 "/system": ("Loading pipeline health", "Checking stream progress, storage, and benchmark summaries…"),
+                "/milestone4": ("Loading Milestone 4", "Reading curated ingestion, baselines, churn rankings, and benchmarks…"),
+                "/milestone5": ("Loading Milestone 5", "Reading Spark ML outcomes, detector comparisons, and evaluation…"),
+                "/milestone6": ("Loading Milestone 6", "Reading graph spillover, revision diffs, subject map, and Lift Wing calibration…"),
             }
             title, description = copy.get(pathname or "/", ("Loading dashboard", "Preparing the requested view…"))
-        return {"display": "flex" if busy else "none"}, title, description
+        icon_cls = "backend-loading-pill active" if busy else "backend-loading-pill"
+        return {"display": "flex" if busy else "none"}, title, description, icon_cls
 
     @app.callback(
         Output("replay-clock", "disabled"),
@@ -188,3 +254,137 @@ def register_callbacks(app, service):
         if not title:
             raise PreventUpdate
         return "/investigation?title=" + quote(title, safe="")
+
+    @app.callback(
+        Output("geo-map-content", "children"),
+        Output("geo-region", "value"),
+        Input("geo-mode", "value"),
+        Input("geo-range", "value"),
+        Input("geo-region", "value"),
+        Input("geo-projection", "value"),
+        Input("geo-metric", "value"),
+        Input("geo-regional-map", "clickData", allow_optional=True),
+        Input("geo-reset-btn", "n_clicks"),
+        running=[(Output("refresh-busy", "data"), True, False)],
+        prevent_initial_call=True,
+    )
+    def update_geospatial_map(
+        geo_mode, geo_range, geo_region, geo_projection, geo_metric, map_click, reset_clicks
+    ):
+        target_region = geo_region or "ALL"
+        selected_article_title = None
+        trig = ctx.triggered_id
+        if trig == "geo-reset-btn":
+            target_region = "ALL"
+        elif trig == "geo-regional-map" and map_click:
+            pt = (map_click.get("points") or [{}])[0]
+            cdata = str(pt.get("customdata") or "")
+            if cdata.startswith("COUNTRY|"):
+                clicked_country = cdata.split("|", 1)[1].strip()
+                if clicked_country:
+                    target_region = clicked_country
+            elif cdata.startswith("ARTICLE|"):
+                parts = cdata.split("|")
+                if len(parts) >= 2:
+                    selected_article_title = parts[1]
+            elif pt.get("location"):
+                target_region = str(pt["location"])
+
+        data = service.load(
+            "geospatial_map", "5m", geo_mode or "days", target_region, geo_range or "67d", None
+        )
+        return (
+            geospatial_map.render_content(
+                data,
+                projection=geo_projection or "natural earth",
+                metric_key=geo_metric or "total_edits",
+                selected_article_title=selected_article_title,
+            ),
+            target_region,
+        )
+
+    @app.callback(
+        Output("anomaly-scoring-content", "children"),
+        Output("anom-alert-select", "options"),
+        Output("anom-alert-select", "value"),
+        Input("anom-window", "value"),
+        Input("anom-shift-class", "value"),
+        Input("anom-threshold", "value"),
+        Input("anom-alert-select", "value"),
+        Input("anom-scatter-graph", "clickData", allow_optional=True),
+        running=[(Output("refresh-busy", "data"), True, False)],
+        prevent_initial_call=True,
+    )
+    def update_anomaly_scoring(anom_win, shift_cls, min_thresh, selected_alert, scatter_click):
+        data = service.load("anomaly_scoring", "5m", "finalized", None, "1m", None)
+        win_val = anom_win or "1w"
+        cls_val = shift_cls or "ALL"
+        thresh_val = float(min_thresh if min_thresh is not None else 65.0)
+        filtered = anomaly_scoring.filter_alerts(
+            data.get("alerts", []), window_horizon=win_val, shift_class=cls_val, min_score=thresh_val
+        )
+        options = anomaly_scoring.build_alert_dropdown_options(filtered)
+        option_vals = {opt["value"] for opt in options}
+
+        target_alert = selected_alert
+        if ctx.triggered_id == "anom-scatter-graph" and scatter_click:
+            pt = (scatter_click.get("points") or [{}])[0]
+            clicked_id = pt.get("customdata") or pt.get("text")
+            if clicked_id:
+                target_alert = str(clicked_id)
+
+        if not target_alert or (option_vals and target_alert not in option_vals):
+            target_alert = options[0]["value"] if options else None
+
+        return (
+            anomaly_scoring.render_content(
+                data,
+                window_horizon=win_val,
+                shift_class=cls_val,
+                min_score=thresh_val,
+                selected_alert_id=target_alert,
+            ),
+            options,
+            target_alert,
+        )
+
+    @app.callback(
+        Output("top-controls", "style"),
+        Output("live-window-control", "style"),
+        Output("live-view-control", "style"),
+        Output("live-article-control", "style"),
+        Output("historical-range-wrapper", "style"),
+        Output("pause", "style"),
+        Input("location", "pathname"),
+    )
+    def toggle_top_controls(pathname):
+        path = pathname or "/"
+        if activity_workspace is not None and path in ("/", "/investigation"):
+            return ({"display": "none"},) * 6
+        if path in ("/", "/investigation"):
+            return (
+                {"display": "flex"},
+                {"display": "block"},
+                {"display": "block"},
+                {"display": "block"},
+                {"display": "none"},
+                {"display": "block"},
+            )
+        if path in ("/historical", "/milestone4"):
+            return (
+                {"display": "flex"},
+                {"display": "none"},
+                {"display": "none"},
+                {"display": "none"},
+                {"display": "block"},
+                {"display": "none"},
+            )
+        # Strictly historical / static pages with their own dedicated controls or full corpus scope
+        return (
+            {"display": "none"},
+            {"display": "none"},
+            {"display": "none"},
+            {"display": "none"},
+            {"display": "none"},
+            {"display": "none"},
+        )

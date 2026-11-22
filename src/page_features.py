@@ -201,7 +201,7 @@ def compare_history(windows: DataFrame, baselines: DataFrame) -> DataFrame:
     lookup = baselines.withColumn(
         "lookup_pageid",
         F.explode(F.array(F.col("pageid"), title_page_id(F.col("baseline_title")))),
-    ).drop("pageid").withColumnRenamed("lookup_pageid", "pageid")
+    ).drop("pageid", "title").withColumnRenamed("lookup_pageid", "pageid")
     lookup_keys = ["pageid", "ns", "window_duration"]
     key_partition = Window.partitionBy(*lookup_keys)
     lookup = (
@@ -210,7 +210,10 @@ def compare_history(windows: DataFrame, baselines: DataFrame) -> DataFrame:
         .drop("matches")
     )
     # Ambiguous titles are excluded instead of multiplying dashboard rows.
-    joined = windows.join(F.broadcast(lookup), lookup_keys, "left")
+    # Historical baselines can contain millions of pages. A forced broadcast
+    # materializes the whole lookup on every local detector driver and can
+    # exhaust its heap; let Spark choose a distributed join for large tables.
+    joined = windows.join(lookup, lookup_keys, "left")
     available = (
         F.col("baseline_end_exclusive").isNotNull()
         & (F.col("day") >= F.col("baseline_end_exclusive"))

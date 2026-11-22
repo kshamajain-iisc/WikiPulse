@@ -25,15 +25,20 @@ def render(data):
                target="_blank", rel="noopener noreferrer", className="article-link"),
         metric_row(data.get("metrics", {})),
         panel("Knowledge-shift evidence", evidence_description,
-              table(data.get("alerts", []), [("Window (IST)", "window_start_ist"), ("Score / 100", "historical_score"),
-                    ("Confidence", "confidence"), ("Edits / 35", "activity_points"),
-                    ("Editors / 20", "editor_points"), ("Content / 20", "content_points"),
-                    ("Reverts / 10", "revert_points"), ("Available weight", "available_weight"),
-                    ("Missing evidence", "missing_evidence"), ("Reasons", "reasons")])),
+              table(data.get("alerts", []), [
+                  ("Window (IST)", "window_start_ist"), ("Type", "alert_type"),
+                  ("Hist / 100", "historical_score"), ("Spark ML", "spark_ml_score"),
+                  ("Fixed", "fixed_threshold_flag"), ("Pageviews", "pageview_corroborated"),
+                  ("Confidence", "confidence"), ("Edits / 35", "activity_points"),
+                  ("Editors / 25", "editor_points"), ("Content / 20", "content_points"),
+                  ("Reverts / 10", "revert_points"), ("Pageviews / 10", "pageview_points"),
+                  ("Available weight", "available_weight"),
+                  ("Missing evidence", "missing_evidence"), ("Reasons", "reasons"),
+              ], aria_label="Knowledge-shift evidence")),
         html.Div([
             panel("Activity over time", f"Selected article · {data.get('bucket', '5 minutes')} IST buckets",
                   graph(charts.activity_timeline(data.get("timeline", []), time_range=time_range))),
-            panel("Current versus normal", "Matching historical windows; training-period comparisons excluded",
+            panel("Current versus normal", "Matching historical windows with μ + 2σ baseline band",
                   graph(charts.baseline_comparison(data.get("comparisons", []), time_range=time_range))),
         ], className="chart-grid"),
         html.Div([
@@ -42,12 +47,20 @@ def render(data):
             panel("Contributor balance", "Observed human and bot edit share",
                   graph(charts.bot_split(data.get("metrics", {})))),
         ], className="chart-grid"),
-        panel("Edit-risk and reversion evidence", "Model probabilities are displayed only when recorded",
-              table(data.get("risks", []), [("Revision", "revid"), ("Risk", "ml_revert_risk"),
-                    ("Outcome", "is_reverted_actual"), ("API status", "api_status")])
+        panel("Edit-risk and reversion evidence", "Lift Wing ML & heuristic revert risk vs actual revert outcomes",
+              table(data.get("risks", []), [
+                  ("Revision", "revid"), ("User", "user"), ("Anon", "is_anon"),
+                  ("Delta (B)", "delta"), ("ML Risk", "ml_revert_risk"),
+                  ("Heuristic", "heuristic_risk"), ("Composite", "composite_risk"),
+                  ("Reverted", "is_reverted_actual"), ("Time to revert (s)", "time_to_revert_sec"),
+                  ("API status", "api_status"),
+              ], aria_label="Edit-risk and reversion evidence")
               if data.get("risks") else notice("No revision-risk evidence", "The scoring/enrichment producer has not supplied risk records for this article.")),
-        panel("Revision changes", "Recorded comparisons; external diff HTML is never executed",
-              table(data.get("diffs", []), [("Revision", "revid"), ("Added lines", "added_lines_count"),
-                    ("Removed lines", "removed_lines_count"), ("Text snippet", "diff_snippet")])
+        panel("Revision changes", "MediaWiki compare diffs; external diff HTML is never executed",
+              table(data.get("diffs", []), [
+                  ("Revision", "revid"), ("User", "user"), ("Delta (B)", "bytes_delta"),
+                  ("Added lines", "added_lines_count"), ("Removed lines", "removed_lines_count"),
+                  ("Status", "compare_status"), ("Comment", "comment"), ("Text snippet", "diff_snippet"),
+              ], aria_label="Revision changes")
               if data.get("diffs") else notice("No revision comparisons", "Revision-difference records will appear here when enrichment is connected.")),
     ]
