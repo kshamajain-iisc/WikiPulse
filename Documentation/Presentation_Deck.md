@@ -11,13 +11,11 @@
 ### WikiPulse: Real-Time Detection and Analysis of Wikipedia Knowledge Shifts
 *Explainable Historical-Baseline Anomaly Scoring, Two-Stage Hybrid Spark ML (`pyspark.ml`), and Contextual Graph, Diff, Geospatial & Revert-Risk Intelligence over 21.45 Million Wikimedia Events (`2026-09-15` to `2026-11-20`)*
 
-| Contributor (Team QuadCore) | Core Architectural Ownership |
-| :--- | :--- |
-| **Kshama Jain** | Streaming Kafka 3.9.1 (KRaft) / Spark Structured Streaming & Multi-Detector Scoring |
-| **Senthil Raj K** | 11-Table Partitioned Parquet Lakehouse, 47-Day Baselines & Spark ML (`pyspark.ml`) |
-| **Pothukanuri Sai Venkat** | Contextual Spillover Link Graph, Sanitized Compare Diffs & Subject Geospatial Map |
-| **Akash H S** | Distributed Scaling/Shuffle Benchmarks, Lift Wing Calibration & 8-Screen Dash UI |
-
+- **Project Contributors (Team QuadCore):**
+  - **Kshama Jain**
+  - **Senthil Raj K**
+  - **Pothukanuri Sai Venkat**
+  - **Akash H S**
 - **Programme & Course:** DA231o — Data Engineering at Scale, Indian Institute of Science (IISc), Bengaluru (Nov 2026)
 - **Application Preview — Screen 01 (`/` Live Pulse):**
 
