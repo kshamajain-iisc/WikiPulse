@@ -15,8 +15,8 @@ Implements and compares the 3 Proposal Anomaly Detectors across `page_windows_5m
       `MAJOR_REWRITE`.
 - **Detector C (Spark ML Pipeline — `KMeans` + `RandomForestClassifier`)**:
     * Standardizes an 8-dimensional window feature vector via `VectorAssembler` + `StandardScaler`.
-    * Fits unsupervised `KMeans(k=8)` (computing standardized Euclidean distance from normal
-      activity centroids) and `RandomForestClassifier(numTrees=35)` to produce `spark_ml_score`.
+    * Fits unsupervised `KMeans(k=6)` (computing standardized Euclidean distance from normal
+      activity centroids) and `RandomForestClassifier(numTrees=40)` to produce `spark_ml_score`.
 
 Writes `curated/alerts` conforming strictly to `ALERT_SCHEMA` with deterministic SHA-256 `alert_id`.
 
@@ -55,40 +55,45 @@ from src.models.schemas import ALERT_SCHEMA
 
 
 def load_daily_pageviews_df(spark) -> DataFrame:
-    """Load daily per-article pageviews from `historical/data/analytics/` into a Spark DataFrame."""
+    """Load daily per-article pageviews from `historical/data/analytics/` and `Repo/data/analytics/`."""
     records: dict[tuple[str, str], float] = {}
+    analytics_dirs = []
+    for d in (RAW_ANALYTICS_DIR, REPO_ROOT / "data" / "analytics"):
+        if d.exists() and d.resolve() not in {p.resolve() for p in analytics_dirs}:
+            analytics_dirs.append(d)
 
-    # 1. Top daily pageviews file
-    top_daily_path = RAW_ANALYTICS_DIR / "pageviews_top_daily.json"
-    if top_daily_path.exists():
-        try:
-            top_data = json.loads(top_daily_path.read_text(encoding="utf-8"))
-            for day_str, articles in top_data.items():
-                for item in articles:
-                    art = item.get("article", "").replace("_", " ")
-                    views = item.get("views")
-                    if art and views is not None:
-                        records[(art, day_str)] = float(views)
-        except Exception:
-            pass
+    for analytics_dir in analytics_dirs:
+        # 1. Top daily pageviews file
+        top_daily_path = analytics_dir / "pageviews_top_daily.json"
+        if top_daily_path.exists():
+            try:
+                top_data = json.loads(top_daily_path.read_text(encoding="utf-8"))
+                for day_str, articles in top_data.items():
+                    for item in articles:
+                        art = item.get("article", "").replace("_", " ")
+                        views = item.get("views")
+                        if art and views is not None:
+                            records[(art, day_str)] = float(views)
+            except Exception:
+                pass
 
-    # 2. Cached per-article daily pageview files
-    search_files = list(RAW_ANALYTICS_DIR.glob("page_*_views.json"))
-    pages_dir = RAW_ANALYTICS_DIR / "pages"
-    if pages_dir.exists():
-        search_files.extend(pages_dir.glob("views_*.json"))
+        # 2. Cached per-article daily pageview files
+        search_files = list(analytics_dir.glob("page_*_views.json"))
+        pages_dir = analytics_dir / "pages"
+        if pages_dir.exists():
+            search_files.extend(pages_dir.glob("views_*.json"))
 
-    for pfile in search_files:
-        try:
-            pdata = json.loads(pfile.read_text(encoding="utf-8"))
-            for it in pdata.get("items", []):
-                art = it.get("article", "").replace("_", " ")
-                ts_raw = str(it.get("timestamp", ""))[:8]
-                if art and len(ts_raw) == 8:
-                    d_str = f"{ts_raw[:4]}-{ts_raw[4:6]}-{ts_raw[6:8]}"
-                    records[(art, d_str)] = float(it.get("views", 0))
-        except Exception:
-            pass
+        for pfile in search_files:
+            try:
+                pdata = json.loads(pfile.read_text(encoding="utf-8"))
+                for it in pdata.get("items", []):
+                    art = it.get("article", "").replace("_", " ")
+                    ts_raw = str(it.get("timestamp", ""))[:8]
+                    if art and len(ts_raw) == 8:
+                        d_str = f"{ts_raw[:4]}-{ts_raw[4:6]}-{ts_raw[6:8]}"
+                        records[(art, d_str)] = float(it.get("views", 0))
+            except Exception:
+                pass
 
     rows = []
     for (title, d_str), views in records.items():
@@ -127,6 +132,12 @@ def apply_detectors_a_and_b_exprs(df: DataFrame) -> DataFrame:
         .when(
             F.col("daily_pageviews").isNotNull() & (F.col("daily_pageviews") >= F.lit(25000.0)),
             F.round(F.col("daily_pageviews") / F.lit(8000.0), 2),
+        )
+        .when(
+            (F.col("avg_daily_pageviews") >= F.lit(1200.0))
+            & (F.col("distinct_human_editors") >= 5)
+            & (F.col("velocity_zscore") >= F.lit(20.0)),
+            F.round(F.lit(1.6) + F.lit(0.45) * F.log1p(F.greatest(F.lit(0.0), F.col("editor_surge_ratio"))), 2),
         )
         .otherwise(F.lit(None).cast("double")),
     ).withColumn(
@@ -394,12 +405,9 @@ def add_reasons_and_ids(df: DataFrame) -> DataFrame:
     )
 
 
-def fit_and_score_spark_ml(df: DataFrame, sample_fraction: float = 1.0) -> tuple[DataFrame, dict]:
-    """Run Detector C (Spark ML Pipeline: VectorAssembler -> StandardScaler -> KMeans + RandomForest)
-    and attach `spark_ml_score` and `spark_ml_alert_flag`."""
-    t_ml = time.time()
-
-    feature_cols = [
+def _prepare_ml_feature_df(df: DataFrame) -> tuple[DataFrame, list[str]]:
+    """Prepare log-stabilized 8D clustering features and structural proxy label."""
+    kmeans_feature_cols = [
         "f_edits_human",
         "f_distinct_editors",
         "f_log_gross_bytes",
@@ -409,10 +417,9 @@ def fit_and_score_spark_ml(df: DataFrame, sample_fraction: float = 1.0) -> tuple
         "f_velocity_z",
         "f_editor_surge",
     ]
-
     feat_df = (
-        df.withColumn("f_edits_human", F.col("edits_human").cast("double"))
-        .withColumn("f_distinct_editors", F.col("distinct_human_editors").cast("double"))
+        df.withColumn("f_edits_human", F.log1p(F.greatest(F.lit(0.0), F.col("edits_human").cast("double"))))
+        .withColumn("f_distinct_editors", F.log1p(F.greatest(F.lit(0.0), F.col("distinct_human_editors").cast("double"))))
         .withColumn("f_log_gross_bytes", F.log1p(F.greatest(F.lit(0.0), F.col("gross_bytes").cast("double"))))
         .withColumn("f_log_rewriting_bytes", F.log1p(F.greatest(F.lit(0.0), F.col("rewriting_bytes").cast("double"))))
         .withColumn("f_revert_ratio", F.coalesce(F.col("revert_ratio").cast("double"), F.lit(0.0)))
@@ -420,60 +427,77 @@ def fit_and_score_spark_ml(df: DataFrame, sample_fraction: float = 1.0) -> tuple
             "f_bot_share",
             F.col("edits_bot").cast("double") / F.greatest(F.col("edits_total").cast("double"), F.lit(1.0)),
         )
-        .withColumn("f_velocity_z", F.least(F.lit(100.0), F.greatest(F.lit(0.0), F.col("velocity_zscore").cast("double"))))
-        .withColumn("f_editor_surge", F.least(F.lit(100.0), F.greatest(F.lit(0.0), F.col("editor_surge_ratio").cast("double"))))
-        # Structural proxy label for supervised RF comparison (requiring multi-editor or major byte movement)
+        .withColumn("f_velocity_z", F.log1p(F.least(F.lit(250.0), F.greatest(F.lit(0.0), F.col("velocity_zscore").cast("double")))))
+        .withColumn("f_editor_surge", F.log1p(F.least(F.lit(120.0), F.greatest(F.lit(0.0), F.col("editor_surge_ratio").cast("double")))))
         .withColumn(
             "ml_label",
             F.when(
                 (F.col("ns") == 0)
                 & (F.col("edits_human") >= 5)
                 & (
-                    ((F.col("velocity_zscore") >= 6.0) & (F.col("distinct_human_editors") >= 3) & (F.col("gross_bytes") >= 400))
-                    | ((F.col("velocity_zscore") >= 8.0) & (F.col("distinct_human_editors") >= 2) & (F.col("gross_bytes") >= 5000))
-                    | ((F.col("edits_human") >= 6) & (F.col("distinct_human_editors") >= 3) & (F.col("revert_ratio") >= 0.35))
+                    ((F.col("velocity_zscore") >= 5.5) & (F.col("distinct_human_editors") >= 3) & (F.col("gross_bytes") >= 350))
+                    | ((F.col("velocity_zscore") >= 7.5) & (F.col("distinct_human_editors") >= 2) & (F.col("gross_bytes") >= 4500))
+                    | ((F.col("edits_human") >= 6) & (F.col("distinct_human_editors") >= 3) & (F.col("revert_ratio") >= 0.30))
                 ),
                 F.lit(1.0),
             ).otherwise(F.lit(0.0)),
         )
     )
+    return feat_df, kmeans_feature_cols
 
-    assembler = VectorAssembler(inputCols=feature_cols, outputCol="raw_features", handleInvalid="keep")
-    scaler = StandardScaler(inputCol="raw_features", outputCol="scaled_features", withStd=True, withMean=True)
+
+def _infer_cluster_archetype(cid: int, normal_id: int, row_dict: dict, *_unused) -> str:
+    """Name a KMeans cluster from its own mean profile (each cluster judged independently)."""
+    if cid == normal_id:
+        return "Normal Quiet Baseline"
+    revert = float(row_dict.get("avg_revert_ratio") or 0.0)
+    editors = float(row_dict.get("avg_distinct_editors") or 0.0)
+    bot = float(row_dict.get("avg_bot_share") or 0.0)
+    gross = float(row_dict.get("avg_gross_bytes") or 0.0)
+    if revert >= 0.5:
+        return "Multi-Editor Edit War" if editors >= 1.5 else "Solo Revert / Cleanup"
+    if bot >= 0.10:
+        return "Bot-Assisted Maintenance"
+    if editors >= 2.0:
+        return "Multi-Editor Collaborative Surge"
+    if gross >= 1500:
+        return "Single-Editor Major Rewrite"
+    return "Moderate Routine Activity"
+
+
+def fit_and_score_spark_ml(
+    df: DataFrame, sample_fraction: float = 1.0, keep_ml_Diagnostics: bool = False
+) -> tuple[DataFrame, dict]:
+    """Run Detector C (Spark ML Pipeline: VectorAssembler -> StandardScaler -> KMeans(k=6)
+    -> f_centroid_distance feature -> RandomForestClassifier) and attach `spark_ml_score`
+    and `spark_ml_alert_flag`."""
+    t_ml = time.time()
+    feat_df, kmeans_feature_cols = _prepare_ml_feature_df(df)
+
+    # Stage 1: Standardize 8D behavioral vector & fit KMeans(k=6)
+    assembler_km = VectorAssembler(inputCols=kmeans_feature_cols, outputCol="raw_features", handleInvalid="keep")
+    scaler_km = StandardScaler(inputCol="raw_features", outputCol="scaled_features", withStd=True, withMean=True)
     kmeans = KMeans(
         featuresCol="scaled_features",
         predictionCol="kmeans_cluster",
-        k=8,
+        k=6,
         seed=42,
-        maxIter=25,
+        maxIter=35,
     )
-    rf = RandomForestClassifier(
-        featuresCol="scaled_features",
-        labelCol="ml_label",
-        predictionCol="rf_pred",
-        probabilityCol="rf_prob",
-        rawPredictionCol="rf_raw",
-        numTrees=35,
-        maxDepth=6,
-        seed=42,
-    )
+    km_pipeline = Pipeline(stages=[assembler_km, scaler_km, kmeans])
 
-    pipeline = Pipeline(stages=[assembler, scaler, kmeans, rf])
-
-    train_df = feat_df.filter("ns = 0")
+    train_km_df = feat_df.filter("ns = 0")
     if sample_fraction < 1.0:
-        train_df = train_df.sample(withReplacement=False, fraction=sample_fraction, seed=42)
+        train_km_df = train_km_df.sample(withReplacement=False, fraction=sample_fraction, seed=42)
 
-    pipeline_model = pipeline.fit(train_df)
-    scored_df = pipeline_model.transform(feat_df)
+    km_model_pipeline = km_pipeline.fit(train_km_df)
+    km_scored = km_model_pipeline.transform(feat_df)
 
-    # Extract KMeans model & find the majority "normal baseline" cluster center
-    kmeans_model = pipeline_model.stages[2]
-    rf_model = pipeline_model.stages[3]
+    kmeans_model = km_model_pipeline.stages[2]
     centers = [list(map(float, c)) for c in kmeans_model.clusterCenters()]
 
     cluster_counts_rows = (
-        scored_df.filter("ns = 0")
+        km_scored.filter("ns = 0")
         .groupBy("kmeans_cluster")
         .count()
         .orderBy(F.desc("count"))
@@ -483,8 +507,7 @@ def fit_and_score_spark_ml(df: DataFrame, sample_fraction: float = 1.0) -> tuple
     normal_cluster_id = int(cluster_counts_rows[0]["kmeans_cluster"]) if cluster_counts_rows else 0
     normal_center = centers[normal_cluster_id]
 
-    # Evaluate Silhouette score on a bounded sample so evaluation is fast
-    eval_sample = scored_df.filter("ns = 0").limit(25000)
+    eval_sample = km_scored.filter("ns = 0").limit(25000)
     evaluator = ClusteringEvaluator(
         featuresCol="scaled_features",
         predictionCol="kmeans_cluster",
@@ -495,23 +518,42 @@ def fit_and_score_spark_ml(df: DataFrame, sample_fraction: float = 1.0) -> tuple
     except Exception:
         silhouette_score = 0.0
 
-    # Convert `scaled_features` vector to array to compute Euclidean distance from normal centroid purely in Catalyst SQL
-    scored_df = scored_df.withColumn("_scaled_arr", vector_to_array(F.col("scaled_features")))
+    # Compute Euclidean distance from the normal baseline centroid (`f_centroid_distance`)
+    km_scored = km_scored.withColumn("_scaled_arr", vector_to_array(F.col("scaled_features")))
     sq_diff_terms = [
         F.pow(F.col("_scaled_arr")[i] - F.lit(float(normal_center[i])), 2)
-        for i in range(len(feature_cols))
+        for i in range(len(kmeans_feature_cols))
     ]
     dist_expr = F.sqrt(sum(sq_diff_terms[1:], sq_diff_terms[0]))
+    km_scored = km_scored.withColumn("f_centroid_distance", F.round(dist_expr, 4)).cache()
 
-    # Extract RF probability for class 1
+    # Stage 2: Assemble 9D feature vector (8 behavioral features + `f_centroid_distance`) for RandomForest
+    rf_feature_cols = kmeans_feature_cols + ["f_centroid_distance"]
+    assembler_rf = VectorAssembler(inputCols=rf_feature_cols, outputCol="rf_features", handleInvalid="keep")
+    rf = RandomForestClassifier(
+        featuresCol="rf_features",
+        labelCol="ml_label",
+        predictionCol="rf_pred",
+        probabilityCol="rf_prob",
+        rawPredictionCol="rf_raw",
+        numTrees=40,
+        maxDepth=6,
+        seed=42,
+    )
+    rf_pipeline = Pipeline(stages=[assembler_rf, rf])
+    train_rf_df = km_scored.filter("ns = 0")
+    if sample_fraction < 1.0:
+        train_rf_df = train_rf_df.sample(withReplacement=False, fraction=sample_fraction, seed=42)
+    rf_model_pipeline = rf_pipeline.fit(train_rf_df)
+    scored_df = rf_model_pipeline.transform(km_scored)
+    rf_model = rf_model_pipeline.stages[1]
+
     rf_prob_arr = vector_to_array(F.col("rf_prob"))
     rf_score_expr = F.coalesce(rf_prob_arr[1], F.lit(0.0)) * F.lit(100.0)
-
-    # Map KMeans Euclidean distance in standardized space to [0, 100] score
-    kmeans_score_expr = F.least(F.lit(100.0), F.lit(24.0) * F.log1p(dist_expr))
+    kmeans_score_expr = F.least(F.lit(100.0), F.lit(32.0) * F.log1p(F.col("f_centroid_distance")))
 
     scored_df = (
-        scored_df.withColumn("kmeans_distance", F.round(dist_expr, 4))
+        scored_df.withColumn("kmeans_distance", F.col("f_centroid_distance"))
         .withColumn("kmeans_score", F.round(kmeans_score_expr, 2))
         .withColumn("rf_score", F.round(rf_score_expr, 2))
         .withColumn(
@@ -520,7 +562,7 @@ def fit_and_score_spark_ml(df: DataFrame, sample_fraction: float = 1.0) -> tuple
                 F.when(F.col("edits_human") <= 0, F.lit(0.0)).otherwise(
                     F.least(
                         F.lit(100.0),
-                        F.lit(0.50) * F.col("kmeans_score") + F.lit(0.50) * F.col("rf_score"),
+                        F.lit(0.25) * F.col("kmeans_score") + F.lit(0.75) * F.col("rf_score"),
                     )
                 ),
                 2,
@@ -538,28 +580,78 @@ def fit_and_score_spark_ml(df: DataFrame, sample_fraction: float = 1.0) -> tuple
         )
     )
 
+    # Compute rich per-cluster centroid & behavioral profiles
+    profile_rows = (
+        scored_df.filter("ns = 0")
+        .groupBy("kmeans_cluster")
+        .agg(
+            F.count("*").alias("window_count"),
+            F.round(F.avg("edits_human"), 2).alias("avg_edits_human"),
+            F.round(F.avg("distinct_human_editors"), 2).alias("avg_distinct_editors"),
+            F.round(F.avg("gross_bytes"), 1).alias("avg_gross_bytes"),
+            F.round(F.avg("revert_ratio"), 4).alias("avg_revert_ratio"),
+            F.round(F.avg("f_bot_share"), 4).alias("avg_bot_share"),
+            F.round(F.avg("velocity_zscore"), 2).alias("avg_velocity_zscore"),
+            F.round(F.avg("f_centroid_distance"), 3).alias("avg_centroid_distance"),
+            F.round(F.avg("historical_score"), 2).alias("avg_historical_score"),
+            F.round(F.avg("spark_ml_score"), 2).alias("avg_spark_ml_score"),
+        )
+        .collect()
+    )
+    total_ns0 = max(1, sum(int(r["window_count"]) for r in profile_rows))
+    raw_profiles = {int(r["kmeans_cluster"]): r.asDict() for r in profile_rows}
+
+    cluster_profiles = []
+    for cid, pdict in sorted(raw_profiles.items(), key=lambda kv: -int(kv[1]["window_count"])):
+        c_vec = centers[cid] if cid < len(centers) else [0.0] * len(kmeans_feature_cols)
+        c_dist = sum((c_vec[i] - normal_center[i]) ** 2 for i in range(len(kmeans_feature_cols))) ** 0.5
+        archetype = _infer_cluster_archetype(cid, normal_cluster_id, pdict)
+        cluster_profiles.append({
+            "cluster_id": cid,
+            "archetype": archetype,
+            "window_count": int(pdict["window_count"]),
+            "share_pct": round(100.0 * int(pdict["window_count"]) / total_ns0, 2),
+            "centroid_distance_from_normal": round(float(c_dist), 3),
+            "avg_centroid_distance": float(pdict.get("avg_centroid_distance") or 0.0),
+            "avg_edits_human": float(pdict.get("avg_edits_human") or 0.0),
+            "avg_distinct_editors": float(pdict.get("avg_distinct_editors") or 0.0),
+            "avg_gross_bytes": float(pdict.get("avg_gross_bytes") or 0.0),
+            "avg_revert_ratio": float(pdict.get("avg_revert_ratio") or 0.0),
+            "avg_bot_share": float(pdict.get("avg_bot_share") or 0.0),
+            "avg_velocity_zscore": float(pdict.get("avg_velocity_zscore") or 0.0),
+            "avg_historical_score": float(pdict.get("avg_historical_score") or 0.0),
+            "avg_spark_ml_score": float(pdict.get("avg_spark_ml_score") or 0.0),
+            "standardized_centroid": {
+                fname: round(float(c_vec[i]), 3) for i, fname in enumerate(kmeans_feature_cols)
+            },
+        })
+
     importances = {
         name: round(float(val), 4)
-        for name, val in zip(feature_cols, rf_model.featureImportances.toArray())
+        for name, val in zip(rf_feature_cols, rf_model.featureImportances.toArray())
     }
 
     ml_metrics = {
-        "kmeans_k": 8,
+        "kmeans_k": 6,
         "normal_baseline_cluster_id": normal_cluster_id,
         "cluster_sizes": cluster_sizes,
+        "cluster_profiles": cluster_profiles,
         "kmeans_silhouette_score": round(silhouette_score, 4),
-        "rf_num_trees": 35,
+        "rf_num_trees": 40,
         "rf_feature_importances": importances,
         "ml_pipeline_runtime_sec": round(time.time() - t_ml, 2),
     }
 
-    # Drop temporary ML columns
+    if keep_ml_Diagnostics:
+        return scored_df, ml_metrics
+
     drop_cols = (
-        feature_cols
+        rf_feature_cols
         + [
             "ml_label",
             "raw_features",
             "scaled_features",
+            "rf_features",
             "kmeans_cluster",
             "rf_pred",
             "rf_prob",

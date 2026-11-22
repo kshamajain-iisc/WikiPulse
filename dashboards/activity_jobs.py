@@ -78,12 +78,9 @@ class ActivityWorkspace:
         with self._lock:
             previous_id = self._owners.get(owner)
             previous = self._jobs.get(previous_id)
+            if previous and previous["key"] == key and previous["status"] not in TERMINAL:
+                return self.public(previous)
             if previous and previous["status"] not in TERMINAL:
-                # Incoming live batches can change the cache version during a
-                # day scan. An identical stored selection can use that scan.
-                same_selection = mode == "stored" and previous["spec"] == spec
-                if not previous["cancelled"] and (previous["key"] == key or same_selection):
-                    return self.public(previous)
                 previous["cancelled"] = True
             job_id = uuid.uuid4().hex
             job = {"id": job_id, "owner": owner, "key": key, "spec": spec, "status": "queued",
@@ -215,3 +212,4 @@ class ActivityWorkspace:
             job = self._jobs.get(self._owners.get(owner))
             if job and job["status"] not in TERMINAL:
                 job["cancelled"] = True
+

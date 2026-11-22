@@ -23,6 +23,7 @@ from urllib.error import URLError
 from urllib.request import urlopen
 
 from src.kafka_common import KAFKA_ALERT_TOPIC, KAFKA_SERVERS, KAFKA_TOPIC
+from src.stream_control import atomic_json, read_json, stop_and_drain
 
 ROOT = Path(__file__).resolve().parents[1]
 LIVE_DIRECTORY = ROOT / "data/live_activity"
@@ -55,13 +56,23 @@ def write_supervisor_state(processes, state: str, error: str | None = None) -> N
 
 def start_stream_services(processes, lock_directory: Path) -> None:
     """Start/restart the stream children in checkpoint-safe dependency order."""
+    start_collector(processes, lock_directory)
+    start_processing_services(processes, lock_directory)
+
+
+def start_collector(processes, lock_directory: Path) -> None:
     collector_log = LOG_DIRECTORY / "collector.log"
     collector_log_offset = collector_log.stat().st_size if collector_log.exists() else 0
-    processes.start("collector", "src.collector")
+    source = read_json(lock_directory / "stream-source.json")
+    arguments = ("--since", source["since"]) if source.get("since") else ()
+    processes.start("collector", "src.collector", *arguments)
     processes.wait_for(
         "the Wikimedia EventStreams connection",
         lambda: log_contains_since(collector_log, collector_log_offset, "EventStreams connected"),
     )
+
+
+def start_processing_services(processes, lock_directory: Path) -> None:
     bronze_ready = lock_directory / "bronze.ready"
     bronze_ready.unlink(missing_ok=True)
     processes.start("bronze", "src.stream_measurements", "bronze", "--ready-file", str(bronze_ready))
@@ -99,6 +110,31 @@ def log_contains_since(path: Path, offset: int, text: str) -> bool:
             return text in log_file.read()
     except OSError:
         return False
+
+
+def change_stream_source(processes, runtime, source, streaming_enabled):
+    from src.stream_source import normalize_since
+    if not isinstance(source, dict) or source.get("mode") not in ("live", "since"):
+        raise ValueError("Invalid Wikipedia source selection")
+    since = normalize_since(source.get("since")) if source["mode"] == "since" else None
+    if source["mode"] == "since" and not since:
+        raise ValueError("A since timestamp is required")
+    previous = read_json(runtime / "stream-source.json") or {"mode": "live", "since": None}
+    processes.stop_named(("collector",))
+    atomic_json(runtime / "stream-source.json", {"mode": source["mode"], "since": since})
+    try:
+        start_collector(processes, runtime)
+        if not streaming_enabled:
+            start_processing_services(processes, runtime)
+    except Exception:
+        processes.stop_named(("collector",))
+        atomic_json(runtime / "stream-source.json", previous)
+        if streaming_enabled:
+            start_collector(processes, runtime)
+        raise
+    return {"message": f"Wikipedia connected from {since}. Available upstream history is being captured; the connection continues live after catching up."
+            if since else "Wikipedia connected at Live now.",
+            "source": {"mode": source["mode"], "since": since}}
 
 
 def run_command(arguments: list[str], timeout: int = 30) -> str:
@@ -402,7 +438,7 @@ class LocalProcesses:
             for _, process in reversed(targets):
                 try:
                     os.killpg(process.pid, shutdown_signal)
-                except ProcessLookupError:
+                except (ProcessLookupError, PermissionError):
                     pass
             deadline = time.monotonic() + grace_seconds
             for _, process in targets:
@@ -446,7 +482,7 @@ class LocalProcesses:
                 # A driver may already have exited while its Spark JVM survives.
                 try:
                     os.killpg(process.pid, shutdown_signal)
-                except ProcessLookupError:
+                except (ProcessLookupError, PermissionError):
                     pass
             deadline = time.monotonic() + grace_seconds
             for _, process in self.children:
@@ -459,7 +495,7 @@ class LocalProcesses:
                 for _, process in self.children:
                     try:
                         os.killpg(process.pid, signal.SIGTERM)
-                    except ProcessLookupError:
+                    except (ProcessLookupError, PermissionError):
                         pass
                 return
 
@@ -560,6 +596,9 @@ def main() -> int:
             processes.wait_for("the dashboard server", lambda: dashboard_ready(args.port))
             print(f"Dashboard: http://127.0.0.1:{args.port}/", flush=True)
             write_supervisor_state(processes, "starting")
+            # A new local-server session starts at Live now; in-session source
+            # changes persist for Start/Stop and collector reconnects only.
+            atomic_json(lock_directory / "stream-source.json", {"mode": "live", "since": None})
             start_stream_services(processes, lock_directory)
             write_supervisor_state(processes, "running")
             print(
@@ -568,12 +607,42 @@ def main() -> int:
                 "Press Ctrl+C to stop. Logs are in logs/local/.",
                 flush=True,
             )
+            streaming_enabled = True
+            control_error = None
             while True:
                 try:
                     processes.check_running()
-                    write_supervisor_state(processes, "running")
+                    write_supervisor_state(processes, "broken" if control_error else "running" if streaming_enabled else "idle", control_error)
                 except RuntimeError as error:
                     write_supervisor_state(processes, "broken", str(error))
+
+                command_path = lock_directory / "stream-control.request.json"
+                if command_path.exists():
+                    command = read_json(command_path)
+                    action = command.get("action")
+                    if action in ("start", "stop", "source"):
+                        write_supervisor_state(processes, "draining" if action == "stop" else "starting")
+                        try:
+                            if action == "stop":
+                                result = stop_and_drain(processes, ROOT)
+                                streaming_enabled = False
+                            elif action == "source":
+                                result = change_stream_source(processes, lock_directory, command.get("source"), streaming_enabled)
+                                streaming_enabled = True
+                            else:
+                                processes.stop_named(STREAM_SERVICES)
+                                start_stream_services(processes, lock_directory)
+                                streaming_enabled = True
+                                result = {"message": "Stream started from compatible checkpoints.",
+                                          "source_gap": "Capture resumes from the source connection; any stopped interval may be incomplete."}
+                            atomic_json(lock_directory / "stream-control.result.json", {**command, **result, "ok": True})
+                            control_error = None
+                            write_supervisor_state(processes, "running" if streaming_enabled else "idle")
+                        except Exception as error:
+                            control_error = str(error)
+                            atomic_json(lock_directory / "stream-control.result.json", {**command, "ok": False, "message": str(error)})
+                            write_supervisor_state(processes, "broken", str(error))
+                    command_path.unlink(missing_ok=True)
 
                 if RESTART_REQUEST.exists():
                     RESTART_REQUEST.unlink(missing_ok=True)
@@ -581,6 +650,8 @@ def main() -> int:
                     try:
                         processes.stop_named(STREAM_SERVICES)
                         start_stream_services(processes, lock_directory)
+                        streaming_enabled = True
+                        control_error = None
                         write_supervisor_state(processes, "running")
                         print("Stream services restarted; checkpoints and stored data were preserved.", flush=True)
                     except (RuntimeError, OSError, subprocess.TimeoutExpired) as error:

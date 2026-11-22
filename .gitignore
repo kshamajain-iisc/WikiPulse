@@ -10,7 +10,7 @@ __pycache__/
 # ==========================================
 # Virtual Environments
 # ==========================================
-.venv/
+.venv
 venv/
 env/
 ENV/
@@ -94,3 +94,11 @@ ehthumbs.db
 *.swp
 *.swo
 *~
+
+# ==========================================
+# Documentation Screenshots & Backups
+# ==========================================
+screenshots/
+Documentation/screenshots/
+_backup/
+Documentation/_backup/

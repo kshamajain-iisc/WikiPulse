@@ -6,8 +6,11 @@ ROUTES = [
     ("/", "01", "Live pulse"),
     ("/investigation", "02", "Page investigation"),
     ("/historical", "03", "Historical intelligence"),
-    ("/relationships", "04", "Relationships & map"),
-    ("/system", "05", "Engineering & health"),
+    ("/geospatial-map", "04", "Geospatial map"),
+    ("/contextual-features", "05", "Context, graph & risk"),
+    ("/anomaly-scoring", "06", "Anomaly scoring"),
+    ("/ml-reports", "07", "ML tests & reports"),
+    ("/system", "08", "Engineering & health"),
 ]
 
 
@@ -17,10 +20,8 @@ def navigation(pathname="/"):
             for path, number, label in ROUTES]
 
 
-def shell(activity=False):
-    if activity:
-        from dashboards.activity_ui import activity_shell
-
+def shell(default_view="live", activity=False):
+    from dashboards.activity_ui import activity_shell
     return html.Div([
         dcc.Location(id="location", refresh="callback-nav"),
         # Poll live views often enough to feel live; static routes disable it.
@@ -49,7 +50,14 @@ def shell(activity=False):
             ], id="loading-banner", className="loading-banner", role="status",
                **{"aria-live": "polite"}, style={"display": "none"}),
             html.Header([
-                html.Div([html.Span(className="status-dot"), html.Span("ENWIKI / OBSERVATORY")], className="workspace-name"),
+                html.Div([
+                    html.Span(className="status-dot"),
+                    html.Span("ENWIKI / OBSERVATORY"),
+                    html.Span([
+                        html.Span(className="backend-spinner-icon"),
+                        html.Span("Loading…", className="backend-loading-text"),
+                    ], id="backend-loading-icon", className="backend-loading-pill", title="Backend query in progress"),
+                ], className="workspace-name"),
                 html.Div([
                     html.Div([
                         html.Span("Checking stream…", id="stream-health-label", className="health-tag health-unknown"),
@@ -70,11 +78,11 @@ def shell(activity=False):
                         options=[{"label": "5 min", "value": "5m"},
                                  {"label": "1 hour", "value": "1h"},
                                  {"label": "6 hours", "value": "6h"}],
-                    )], className="control window-control"),
-                    html.Div([html.Label("RESULTS"), dcc.Dropdown(id="view", value="live", clearable=False,
+                    )], id="live-window-control", className="control window-control"),
+                    html.Div([html.Label("RESULTS"), dcc.Dropdown(id="view", value=default_view, clearable=False,
                         options=[{"label": "Live preview", "value": "live"},
                                  {"label": "Finalized windows", "value": "finalized"},
-                                 {"label": "Replay stored activity", "value": "replay"}])], className="control"),
+                                 {"label": "Replay stored activity", "value": "replay"}])], id="live-view-control", className="control"),
                     html.Div([
                         html.Label("REPLAY"),
                         dcc.Checklist(id="replay-playing", options=[{"label": "Play", "value": "play"}],
@@ -87,16 +95,16 @@ def shell(activity=False):
                                      {"label": "20×", "value": 20}]),
                     ], id="replay-speed-control", className="control replay-control", style={"display": "none"}),
                     html.Div([html.Label("ARTICLE"), dcc.Dropdown(id="article", placeholder="Leading article / choose…",
-                        options=[], clearable=True)], className="control article-control"),
+                        options=[], clearable=True)], id="live-article-control", className="control article-control"),
                     html.Div([
                         html.Label("HISTORICAL RANGE"),
                         dcc.Dropdown(id="historical-range", value="1m", clearable=False,
                             options=[{"label": "15 days", "value": "15d"},
                                      {"label": "1 month", "value": "1m"},
                                      {"label": "3 months", "value": "3m"}]),
-                    ], className="control historical-range-control"),
+                    ], id="historical-range-wrapper", className="control historical-range-control"),
                     dcc.Checklist(id="pause", options=[{"label": "Pause refresh", "value": "pause"}], value=[], className="pause-control"),
-                ], id="controls", className="controls"),
+                ], id="top-controls", className="controls"),
                 html.Div("Starting dashboard queries…", id="source-status", className="source-status", role="status"),
                 *([activity_shell()] if activity else []),
                 html.Div(id="page-body", tabIndex=-1),

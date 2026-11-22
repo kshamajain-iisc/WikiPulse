@@ -300,14 +300,12 @@ def register_activity_callbacks(app, workspace):
           const scope = JSON.stringify([path,mode,kind,day,horizon,zone,q.get('title'),run]);
           const same = rendered && rendered.scope === scope;
           return [active?{display:'block'}:{display:'none'},!active,
-            active?{display:'none'}:{},active?{display:'none'}:{},
             mode==='stored'?{display:'contents'}:{display:'none'},mode==='stored'&&kind==='replay'?{}:{display:'none'},
             mode==='live'?{}:{display:'none'},same?{}:{display:'none'},same?{display:'none'}:{},
             same?{}:{display:'none'},(freeze||[]).includes('freeze')?{}:{display:'none'},
             'pulse-toolbar '+(mode==='stored'?'is-stored':'is-live')];
         }""",
         Output("pulse-host", "style"), Output("pulse-tick", "disabled"),
-        Output("controls", "style"), Output("source-status", "style"),
         Output("pulse-stored-controls", "style"), Output("pulse-replay-controls", "style"),
         Output("pulse-live-controls", "style"), Output("pulse-core", "style"),
         Output("pulse-skeleton", "style"), Output("pulse-evidence", "style"),
@@ -390,6 +388,8 @@ def register_activity_callbacks(app, workspace):
             return None
         if "freeze" in (freeze or []) and ctx.triggered_id in ("pulse-frame", "pulse-kafka-run", "pulse-freeze"):
             raise PreventUpdate
+        if mode == "stored" and not day:
+            raise PreventUpdate
         q = parse_qs((search or "").lstrip("?"))
         spec = {"page": "live" if path == "/" else "investigation", "mode": mode, "kind": kind,
                 "day": day, "horizon": horizon, "zone": zone, "title": q.get("title", [None])[0],
@@ -415,18 +415,13 @@ def register_activity_callbacks(app, workspace):
                 pending = workspace.get(previous["id"])
                 if pending and pending["status"] not in TERMINAL:
                     raise PreventUpdate
-        # Match JSON.stringify in the browser, including literal Unicode titles.
-        scope = json.dumps([path, mode, kind, day, horizon, zone, spec["title"], spec.get("run_id")],
-                           separators=(",", ":"), ensure_ascii=False)
-        if mode == "stored" and not day:
-            workspace.cancel_owner(owner)
-            return {"error": "Choose a capture date to view stored activity.", "spec": spec, "scope": scope}
         try:
             request = workspace.submit(spec, owner)
         except ValueError as error:
-            workspace.cancel_owner(owner)
-            return {"error": str(error), "spec": spec, "scope": scope}
-        request["scope"] = scope
+            return {"error": str(error), "spec": spec}
+        # Match JSON.stringify in the browser, including literal Unicode titles.
+        request["scope"] = json.dumps([path, mode, kind, day, horizon, zone, spec["title"], spec.get("run_id")],
+                                      separators=(",", ":"), ensure_ascii=False)
         return request
 
     @app.callback(Output("pulse-kafka-run", "data"), Output("pulse-kafka-status", "children"),
@@ -494,8 +489,7 @@ def register_activity_callbacks(app, workspace):
         job = workspace.get(request["id"], include_data=True)
         if job is None:
             return (notice("Request expired", "Use Refresh / Retry to reload this selection."), [], "Request expired", [],
-                    workspace.history.text(), "Expired", [], {"scope": request["scope"]},
-                    {"id": request["id"], "status": "failed"}, "/api/activity/console/log")
+                    workspace.history.text(), "Expired", [], {"scope": request["scope"]}, None, "/api/activity/console/log")
         prior_core = previous and previous.get("id") == job["id"] and previous.get("revision", 0) >= 1
         core = no_update
         evidence = no_update
@@ -542,10 +536,6 @@ def register_activity_callbacks(app, workspace):
         log = workspace.history.text()
         summary = f"{job['status'].title()} · {job['elapsed_seconds']:.1f} s"
         status = summary
-        if job["status"] == "running" and "selected_files" in m:
-            status += f" · {m['selected_files']:,} Parquet files selected"
-            if "rows_fetched" in m:
-                status += f" · {m['rows_fetched']:,} rows read"
         if m.get("events_matched") is not None:
             summary += f" · {m['events_matched']:,} matching edits"
         if m.get("cache") == "snapshot hit":
@@ -628,3 +618,4 @@ def register_activity_callbacks(app, workspace):
             source_status.append(html.Small("Capture coverage depends on upstream retention. Live charts use the current activity horizon; use Stored activity to view past dates. Historical arrivals do not rebuild finalized anomaly scores."))
         return (details, busy or not managed or health["state"] in ("running", "catching_up", "reconnecting", "stale"),
                 busy or not managed or health["state"] == "idle", source_status, busy or not managed)
+

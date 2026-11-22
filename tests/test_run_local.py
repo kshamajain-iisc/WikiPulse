@@ -18,12 +18,16 @@ class LocalLauncherTests(unittest.TestCase):
                 patch.object(run_local, "ROOT", root),
                 patch.object(run_local, "LOG_DIRECTORY", root / "logs"),
                 patch.object(run_local, "validate_prerequisites"),
+                patch.object(run_local, "stop_previous_stack"),
+                patch.object(run_local, "check_port_available"),
+                patch.object(run_local, "SUPERVISOR_STATE", root / "data/run/local_supervisor.json"),
+                patch.object(run_local, "RESTART_REQUEST", root / "data/run/restart_stream.request.json"),
                 patch.object(run_local, "LocalProcesses") as supervisor_class,
                 patch.object(run_local, "run_command") as command,
                 patch("sys.argv", ["run_local"]),
             ):
                 # Only the first command queries prior ownership of the broker.
-                command.side_effect = ["broker-id" if broker_already_running else "", "", "", ""]
+                command.side_effect = lambda args, **kwargs: ("broker-id" if broker_already_running else "") if "ps" in args else ""
                 supervisor = supervisor_class.return_value
                 if startup_failure:
                     supervisor.wait_for.side_effect = RuntimeError("startup failed")
@@ -42,11 +46,13 @@ class LocalLauncherTests(unittest.TestCase):
         supervisor.stop.assert_called_once()
         self.assertEqual(commands[-1].args[0], ["docker", "compose", "stop", "kafka"])
 
-    def test_keeps_a_previously_running_broker(self):
+    def test_restarts_the_previously_running_local_broker(self):
         result, commands, supervisor = self.invoke_launcher(broker_already_running=True)
         self.assertEqual(result, 0)
         supervisor.stop.assert_called_once()
-        self.assertFalse(any("stop" in call.args[0] for call in commands))
+        # The current launcher explicitly replaces the local stack and owns
+        # broker shutdown after starting it, even if it existed beforehand.
+        self.assertEqual(sum(call.args[0] == ["docker", "compose", "stop", "kafka"] for call in commands), 2)
 
     def test_startup_failure_cleans_up_started_services(self):
         result, commands, supervisor = self.invoke_launcher(startup_failure=True)
@@ -85,6 +91,19 @@ class LocalLauncherTests(unittest.TestCase):
             supervisor.children.append(("bronze", child))
             with self.assertRaisesRegex(RuntimeError, "bronze exited with code 7"):
                 supervisor.check_running()
+
+    def test_file_broker_compatibility_producer_flushes_without_docker(self):
+        from src.kafka_common import FileStreamProducer
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            spool = root / "data/raw/local_broker_spool"
+            delivered = []
+            producer = FileStreamProducer(spool_dir=spool)
+            producer.produce("wiki.raw.edits", key=b"enwiki:2", value=b"{}", on_delivery=lambda err, msg: delivered.append(err))
+            producer.flush()
+            self.assertEqual(delivered, [None])
+            self.assertEqual(len(list(spool.glob("batch_*.json"))), 1)
 
 
 if __name__ == "__main__":

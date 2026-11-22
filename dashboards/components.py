@@ -46,7 +46,7 @@ def panel(title, subtitle, content, class_name=""):
                         className="panel " + class_name)
 
 
-def graph(figure, graph_id=None):
+def graph(figure, graph_id=None, show_modebar=False, scroll_zoom=False):
     """Reserve chart space explicitly while allowing the width to follow its card.
 
     Dash's default 100% graph height cannot resolve against an auto-height grid
@@ -54,12 +54,17 @@ def graph(figure, graph_id=None):
     participate in normal layout instead of collapsing underneath the heading.
     """
     height = figure.layout.height or 300
+    config = {"displayModeBar": "hover" if show_modebar else False}
+    if show_modebar:
+        config["displaylogo"] = False
+    if scroll_zoom:
+        config["scrollZoom"] = True
     options = {
         "figure": figure,
         "responsive": True,
         "className": "dashboard-graph",
         "style": {"height": f"{height}px", "minHeight": f"{height}px", "width": "100%"},
-        "config": {"displayModeBar": False},
+        "config": config,
     }
     if graph_id:
         options["id"] = graph_id
@@ -72,7 +77,7 @@ def notice(title, description):
 
 
 def pill_row(items):
-    """Render compact status badges used by activity processing details."""
+    """Render compact badge pills; items are (label, value) tuples."""
     if not items:
         return None
     return html.Div([
@@ -81,7 +86,7 @@ def pill_row(items):
     ], className="pill-row")
 
 
-def table(rows, columns, article_links=False):
+def table(rows, columns, article_links=False, aria_label="Data table"):
     """Render bounded server results safely as text; no untrusted HTML."""
     if not rows:
         return notice("No records yet", "This section populates when its source table is available.")
@@ -90,8 +95,20 @@ def table(rows, columns, article_links=False):
         cells = []
         for label, key in columns:
             value = row.get(key)
-            if isinstance(value, list):
-                value = "; ".join(str(item) for item in value)
+            if isinstance(value, bool):
+                value = "Yes" if value else "No"
+            elif isinstance(value, list):
+                items = [str(item) for item in value if item is not None and str(item).strip()]
+                if len(items) > 1:
+                    value = html.Details([
+                        html.Summary([
+                            html.Span(items[0], className="cell-summary-text"),
+                            html.Span(f"+{len(items) - 1} more", className="cell-more-badge"),
+                        ]),
+                        html.Ul([html.Li(item) for item in items], className="cell-details-list"),
+                    ], className="cell-details")
+                else:
+                    value = items[0] if items else "—"
             elif isinstance(value, dict):
                 value = str(value)
             elif isinstance(value, float):
@@ -102,8 +119,14 @@ def table(rows, columns, article_links=False):
                 value = "—"
             if article_links and key == "title":
                 value = dcc.Link(value, href="/investigation?title=" + quote(row["title"], safe=""))
-            cells.append(html.Td(value))
+            cells.append(html.Td(value, className=f"col-{key}"))
         body.append(html.Tr(cells))
-    return html.Div(html.Table([
-        html.Thead(html.Tr([html.Th(label) for label, _ in columns])), html.Tbody(body)
-    ]), className="table-scroll")
+    return html.Div(
+        html.Table([
+            html.Thead(html.Tr([html.Th(label, className=f"col-{key}") for label, key in columns])), html.Tbody(body)
+        ]),
+        className="table-scroll",
+        tabIndex=0,
+        role="region",
+        **{"aria-label": aria_label},
+    )

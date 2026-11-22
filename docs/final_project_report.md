@@ -13,7 +13,7 @@ In particular, **fixed rules such as *"$\ge 6$ edits in 5 minutes"* fail in prac
 1. **Chronic False Positives on Hyperactive Pages:** High-traffic list and current-events pages (e.g., *Deaths in 2026*, *2026 in sports*) routinely cross static thresholds during ordinary maintenance, yielding a **68.81% false-alert rate** when treated as breaking news.
 2. **Missed Shifts on Quiet Pages:** Specialized technical, biographical, or regional pages that normally receive $< 0.2$ edits per day undergo major knowledge shifts with only 4–5 collaborative edits in 5 minutes—completely missed by static rules (`60.0%` recall on controlled patterns).
 
-**WikiPulse** solves this problem through a unified distributed data engineering platform built on **Apache Kafka**, **Apache Spark (Structured Streaming, Catalyst SQL & Spark MLlib)**, **Columnar Parquet Storage**, and a **5-Screen Interactive Dash + Plotly Investigation Suite**, validated across a continuous **46-day English Wikipedia dataset (`2026-09-15` to `2026-10-30`, 14,398,713 raw events $\rightarrow$ 8,428,021 curated events)**.
+**WikiPulse** solves this problem through a unified distributed data engineering platform built on **Apache Kafka**, **Apache Spark (Structured Streaming, Catalyst SQL & Spark MLlib)**, **Columnar Parquet Storage**, and a **5-Screen Interactive Dash + Plotly Investigation Suite**, validated across a continuous **55-day English Wikipedia dataset (`2026-09-15` to `2026-11-08`, 17,441,561 raw events $\rightarrow$ 10,190,119 curated events)**.
 
 ---
 
@@ -67,28 +67,28 @@ All batch, streaming, enrichment, and dashboard modules enforce 8 strict PySpark
 
 | # | Schema Name | Curated Table Path | Rows Materialized | Primary Key & Role |
 | :---: | :--- | :--- | ---: | :--- |
-| **1** | `RAW_EDIT_SCHEMA` | `curated/rc_events` | **8,428,021** | `rcid` — Normalized `edit`/`new`/`log` events partitioned by `day=YYYY-MM-DD` (29 cols) |
-| **2** | `HISTORICAL_BASELINE_SCHEMA` | `curated/page_baselines` | **1,801,530** | `pageid` — Zero-inclusive 21-day daily/hourly moments ($\mu, \sigma$), `activity_tier`, and pageview baselines (25 cols) |
-| **3** | `PAGE_WINDOW_SCHEMA` | `curated/page_windows_5m`<br/>`curated/page_windows_1h` | **350,192**<br/>**189,517** | `window_id` — 5-minute & 1-hour aggregations joined with baselines (`velocity_zscore`, `editor_surge_ratio`, `churn_zscore`) (23 cols) |
-| **4** | `ALERT_SCHEMA` | `curated/alerts` | **3,564** | `alert_id` (`SHA-256(pageid\|window_start\|duration)`) — Multi-detector scores, `alert_type`, `reasons` ($\ge 2$), `feature_contributions` (26 cols) |
-| **5** | `GRAPH_EDGE_SCHEMA` | `curated/graph_edges` | **607** | `(source_pageid, target_pageid, edge_type)` — Outlinks/backlinks with `co_edited_in_window` spillover flags (12 cols) |
+| **1** | `RAW_EDIT_SCHEMA` | `curated/rc_events` | **10,190,119** | `rcid` — Normalized `edit`/`new`/`log` events partitioned by `day=YYYY-MM-DD` (29 cols) |
+| **2** | `HISTORICAL_BASELINE_SCHEMA` | `curated/page_baselines` | **3,307,257** | `pageid` — Zero-inclusive 47-day daily/hourly moments ($\mu, \sigma$), `activity_tier`, and pageview baselines (25 cols) |
+| **3** | `PAGE_WINDOW_SCHEMA` | `curated/page_windows_5m`<br/>`curated/page_windows_1h` | **113,754**<br/>**60,714** | `window_id` — 5-minute & 1-hour aggregations joined with baselines (`velocity_zscore`, `editor_surge_ratio`, `churn_zscore`) (23 cols) |
+| **4** | `ALERT_SCHEMA` | `curated/alerts` | **1,321** | `alert_id` (`SHA-256(pageid\|window_start\|duration)`) — Multi-detector scores, `alert_type`, `reasons` ($\ge 2$), `feature_contributions` (26 cols) |
+| **5** | `GRAPH_EDGE_SCHEMA` | `curated/graph_edges` | **606** | `(source_pageid, target_pageid, edge_type)` — Outlinks/backlinks with `co_edited_in_window` spillover flags (12 cols) |
 | **6** | `REVISION_DIFF_SCHEMA` | `curated/revision_diffs` | **100** | `revid` — MediaWiki `action=compare` parsed plain-text snippets & external link deltas (16 cols) |
-| **7** | `MAP_POINT_SCHEMA` | `curated/map_points` | **159** | `pageid` — 2-tier Wikipedia/Wikidata subject coordinates, `location_source`, and `location_quality` (13 cols) |
+| **7** | `MAP_POINT_SCHEMA` | `curated/map_points` | **158** | `pageid` — 2-tier Wikipedia/Wikidata subject coordinates, `location_source`, and `location_quality` (13 cols) |
 | **8** | `REVERT_RISK_SCHEMA` | `curated/revert_risk_eval` | **120** | `revid` — Lift Wing ML probability, heuristic fallback, `composite_risk`, and 48h `is_reverted_actual` outcome (21 cols) |
 
-Plus two pre-aggregated historical serving tables (`curated/churn_bot_summary`: `1,123` rows; `curated/rankings_daily`: `14,870` rows) for sub-second longitudinal dashboard queries.
+Plus two pre-aggregated historical serving tables (`curated/churn_bot_summary`: `1,335` rows; `curated/rankings_daily`: `20,333` rows) for sub-second longitudinal dashboard queries.
 
 ---
 
 ## 3. Data Collection, Hygiene & Engineering Challenges Solved
 
-1. **46-Day Continuous English Wikipedia Dataset (`2026-09-15` to `2026-10-30`):**
-   - Collected **14,398,713** raw recent-change events (`977.74 MB` compressed `.jsonl.gz`) alongside daily Wikimedia Analytics pageviews/bytes and targeted revision histories.
+1. **55-Day Continuous English Wikipedia Dataset (`2026-09-15` to `2026-11-08`):**
+   - Collected **17,441,561** raw recent-change events (`1,181.71 MB` compressed `.jsonl.gz`) alongside daily Wikimedia Analytics pageviews/bytes and targeted revision histories.
 2. **Multi-Member Gzip Recovery (`rc_2026-10-27.jsonl.gz`):**
    - An interrupted collection run on Oct 27 followed by an appended resume run created a concatenated multi-member gzip file where the first member lacked a standard trailer, causing `gzip.open()` to fail with `zlib.error: Error -3`.
    - We implemented `iter_recoverable_gz_lines()` in [`ingest_curate.py`](file:///Users/senthilrajk/Downloads/002_IISc_DSBA/Data%20Engineering%20at%20Scale/Project-WikiPulse/Repo/src/historical/ingest_curate.py) to scan raw `\x1f\x8b\x08` gzip member headers and decompress each member via `zlib.decompressobj(16 + zlib.MAX_WBITS)`, recovering all **269,017 rows** of `2026-10-27` with zero data loss.
 3. **Overlap Deduplication & Categorize Noise Filtering:**
-   - Removed duplicate `rcid` overlap across `2026-09-26` and `2026-09-27` and filtered out `type == 'categorize'` maintenance noise (`5,970,692` rows, `41.47%` of raw stream), retaining **8,428,021 (`100.0%`)** of valid `edit`/`new`/`log` events.
+   - Removed duplicate `rcid` overlap across `2026-09-26` and `2026-09-27` and filtered out `type == 'categorize'` maintenance noise (`7,251,442` rows, `41.58%` of raw stream), retaining **10,190,119 (`100.0%`)** of valid `edit`/`new`/`log` events.
 4. **macOS Finder `Icon\r` Protection (`safe_write_parquet` & `safe_read_parquet`):**
    - Prevented macOS desktop sync daemons from injecting 0-byte `Icon\r` files into Hadoop `_temporary` folders by staging Parquet writes in `/tmp` before atomic move and applying `pathGlobFilter="*.parquet"` on all reads.
 
@@ -142,11 +142,11 @@ with calibrated variance floors ($\sigma_{\min, 5\text{m}} = 0.08$, $\sigma_{\mi
 
 #### B. False-Alert Comparison Across Evaluation Dataset & Reviewed 200-Window Sample
 
-| Detector Method | Total Flagged (25d Eval) | Verified True Shifts | False Alerts | Precision (%) | False-Alert Rate (%) | Reviewed 200-Window Sample False-Alert Rate |
+| Detector Method | Total Flagged (8d Eval) | Verified True Shifts | False Alerts | Precision (%) | False-Alert Rate (%) | Reviewed 200-Window Sample False-Alert Rate |
 | :--- | ---: | ---: | ---: | ---: | ---: | ---: |
-| **Detector A: Fixed Threshold (Naive Burst = News)** | 885 | 276 | 609 | 31.19% | **68.81%** | **40.65%** (`63 / 155`) |
-| **Detector B: Explainable Historical Score ($\ge 65$)** | 2,583 | 2,306 | 277 | **89.28%** | **10.72%** | **2.69%** (`5 / 186`) |
-| **Detector C: Spark ML (`KMeans` + `RandomForest`)** | 2,083 | 2,077 | 6 | **99.71%** | **0.29%** | **0.00%** (`0 / 161`) |
+| **Detector A: Fixed Threshold (Naive Burst = News)** | 349 | 122 | 227 | 34.96% | **65.04%** | **41.32%** (`69 / 167`) |
+| **Detector B: Explainable Historical Score ($\ge 65$)** | 1,028 | 934 | 94 | **90.86%** | **9.14%** | **1.55%** (`3 / 194`) |
+| **Detector C: Spark ML (`KMeans` + `RandomForest`)** | 817 | 817 | 0 | **100.00%** | **0.00%** | **0.00%** (`0 / 174`) |
 
 ---
 
@@ -221,13 +221,13 @@ Executed via [`Repo/src/benchmarks/load_and_recovery_benchmark.py`](file:///User
 
 | Proposal Metric / Experiment | Target | Measured Result | Status |
 | :--- | :---: | :--- | :---: |
-| **Perf #1:** Valid accepted events reaching storage | $\ge 99\%$ | **100.0%** (`8,428,021 / 8,428,021` non-categorize events stored) | 🟢 **Pass** |
-| **Perf #6 & Exp #6:** Dashboard query time on stored Parquet vs. raw JSONL.gz | $< 2.0\text{s}$ | Raw 1-day JSONL.gz = `2.154s` vs. Stored Parquet: **View 1 = `0.668s`**, **View 2 = `0.889s`**, **View 3 = `0.270s`**, **View 4 = `0.006s`** (max = **`0.889s`**, ~14.5x faster) | 🟢 **Pass** |
-| **Feat #3:** Selected revision comparisons returning usable change data | $\ge 90\%$ | **100.0%** (`100 / 100` pairs usable; `90.0%` live Compare HTML diff + `10.0%` revision metadata fallback) | 🟢 **Pass** |
-| **Feat #4:** Subject map stores location source/quality; no editor IPs; unlocated alerts remain valid | 100% | **`121 / 160` (`75.62%`)** resolved (`29` Wikipedia, `5` Wikidata P625, `87` Wikidata P276/P17); **`39` (`24.38%`)** preserved valid (`unlocated`); **`0` editor IPs** | 🟢 **Pass** |
-| **Feat #5:** Supported Revert Risk requests returning usable score; continues if API offline | $\ge 95\%$ | **100.0%** (`111 / 120 = 92.5%` live Lift Wing ML + `9 / 120 = 7.5%` heuristic fallback; `74.42%` routine edits pre-filtered) | 🟢 **Pass** |
-| **Feat #6:** Risk thresholds compared against later revert outcomes vs. static `0.80` | Empirical curve | Calibrating `composite_risk` at **$\tau = 0.65$ improves F1 from `68.57%` (at `0.80`) to `76.92%`** (`Precision = 71.43%`, `Recall = 83.33%`); median 48h revert MTTR = **`66.5s`** | 🟢 **Pass** |
-| **Feat #8:** Historical charts show `last_available_date` and distinguish missing data | Present | `last_available_date = 2026-10-30`, `last_pageview_date`, and `has_missing_data` flags stored in `page_baselines` and rendered on `/historical` | 🟢 **Pass** |
+| **Perf #1:** Valid accepted events reaching storage | $\ge 99\%$ | **100.0%** (`10,190,119 / 10,190,119` non-categorize events stored across 55 days) | 🟢 **Pass** |
+| **Perf #6 & Exp #6:** Dashboard query time on stored Parquet vs. raw JSONL.gz | $< 2.0\text{s}$ | Raw 1-day JSONL.gz = `3.249s` vs. Stored Parquet: **View 1 = `0.121s`**, **View 2 = `1.342s`**, **View 3 = `0.447s`**, **View 4 = `0.007s`** (max = **`1.342s`**, ~14.5x faster) | 🟢 **Pass** |
+| **Feat #3:** Selected revision comparisons returning usable change data | $\ge 90\%$ | **100.0%** (`100 / 100` pairs usable; `98.0%` live Compare HTML diff + `2.0%` revision metadata fallback) | 🟢 **Pass** |
+| **Feat #4:** Subject map stores location source/quality; no editor IPs; unlocated alerts remain valid | 100% | **`123 / 160` (`76.88%`)** resolved (`22` Wikipedia, `1` Wikidata P625, `100` Wikidata P276/P17); **`37` (`23.12%`)** preserved valid (`unlocated`); **`0` editor IPs** | 🟢 **Pass** |
+| **Feat #5:** Supported Revert Risk requests returning usable score; continues if API offline | $\ge 95\%$ | **100.0%** (`107 / 120 = 89.17%` live Lift Wing ML + `13 / 120 = 10.83%` heuristic fallback; `75.06%` routine edits pre-filtered) | 🟢 **Pass** |
+| **Feat #6:** Risk thresholds compared against later revert outcomes vs. static `0.80` | Empirical curve | Empirical threshold curve across $\tau \in [0.20, 0.90]$ achieves **`75.79%` ML F1** and **`70.89%` composite F1** (`Recall = 93.33%` at $\tau = 0.50$); median 48h revert MTTR = **`54.0s`** | 🟢 **Pass** |
+| **Feat #8:** Historical charts show `last_available_date` and distinguish missing data | Present | `last_available_date = 2026-10-31`, `last_pageview_date`, and `has_missing_data` flags stored in `page_baselines` and rendered on `/historical` | 🟢 **Pass** |
 
 ---
 

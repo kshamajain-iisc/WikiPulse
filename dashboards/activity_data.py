@@ -496,10 +496,8 @@ def aggregate(events, bucket, cancelled=lambda: False, anchor=0):
                                         "gross_bytes": 0, "net_bytes": 0, "reverts": 0,
                                         "known_sizes": 0, "peak_window_editors": 0})
         r["title"] = e.title
-        t = timeline.get(tick)
-        if t is None:
-            t = timeline[tick] = {"window_start": stamp(tick), "human": 0, "bots": 0,
-                                  "gross_bytes": 0, "net_bytes": 0}
+        t = timeline.setdefault(tick, {"window_start": stamp(tick), "human": 0, "bots": 0,
+                                       "gross_bytes": 0, "net_bytes": 0})
         r["edits"] += 1
         key = "bots" if e.bot else "human"
         r[key] += 1
