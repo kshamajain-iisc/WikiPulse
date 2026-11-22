@@ -483,6 +483,7 @@
   <li><strong>Multiple language support:</strong> extend beyond English Wikipedia to other language editions, linking the same topic across languages through Wikidata to spot events that break first in regional wikis.</li>
   <li><strong>Speed-up experiments:</strong> run scaling tests on a real multi-node cluster, and try caching, better partitioning and faster file formats to push throughput further.</li>
   <li><strong>Multi-hop graph with Apache Spark GraphFrames:</strong> upgrade the current 1-hop Spark SQL link/backlink join to <strong>Apache Spark GraphFrames</strong> for distributed multi-hop neighborhood propagation, connected-component discovery, and PageRank centrality across related articles, tracking how breaking topics cascade across whole clusters in real time.</li>
+  <li><strong>ML pipeline improvements:</strong> manually review and label a verified sample of real alerts to improve training data quality, tune the existing Spark ML (<code>KMeans</code> and <code>RandomForest</code>) parameters, and periodically retrain the model as new weeks of Wikipedia data arrive.</li>
 </ol>
 
 </body>
