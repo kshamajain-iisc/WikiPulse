@@ -923,14 +923,18 @@ class DashboardQueries:
                 daily_alerts = records(daily_agg, 366)
             if ranking_rows and "title" in al.columns:
                 top_titles = [r["title"] for r in ranking_rows if r.get("title")]
+                score_aggregates = [
+                    F.round(F.max(column), 2).alias(alias)
+                    for column, alias in (
+                        ("historical_score", "peak_anomaly_score"),
+                        ("spark_ml_score", "peak_ml_score"),
+                    )
+                    if column in al.columns
+                ]
                 per_title = (
                     al.filter(F.col("title").isin(*top_titles))
                     .groupBy("title")
-                    .agg(
-                        F.count("*").alias("detected_shifts"),
-                        F.round(F.max("historical_score"), 2).alias("peak_anomaly_score"),
-                        F.round(F.max("spark_ml_score"), 2).alias("peak_ml_score"),
-                    )
+                    .agg(F.count("*").alias("detected_shifts"), *score_aggregates)
                 )
                 for row in records(per_title, 100):
                     alert_stats_by_title[row["title"]] = row

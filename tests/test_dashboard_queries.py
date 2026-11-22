@@ -71,7 +71,8 @@ class DashboardQueryTests(unittest.TestCase):
             [(day, "Article", "MAJOR_REWRITE", 82.34, 94.12)],
             "day string, title string, alert_type string, historical_score double, spark_ml_score double",
         )
-        with patch.object(queries, "historical_table", side_effect=tables.get):
+        with patch.object(queries, "_parquet_files", return_value=[]), \
+                patch.object(queries, "historical_table", side_effect=tables.get):
             for has_ml_score in (False, True):
                 with self.subTest(has_ml_score=has_ml_score):
                     tables["alerts"] = alerts if has_ml_score else alerts.drop("spark_ml_score")
