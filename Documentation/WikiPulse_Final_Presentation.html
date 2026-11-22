@@ -1,0 +1,1590 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WikiPulse — Real-Time Detection & Analysis of Wikipedia Knowledge Shifts (IISc DA231o)</title>
+<style>
+  :root {
+    --bg-dark: #0b1120;
+    --bg-slide: #0f172a;
+    --bg-card: #1e293b;
+    --bg-card-alt: #172033;
+    --border: #334155;
+    --text-main: #f8fafc;
+    --text-muted: #94a3b8;
+    --accent-blue: #38bdf8;
+    --accent-indigo: #818cf8;
+    --accent-emerald: #34d399;
+    --accent-amber: #fbbf24;
+    --accent-rose: #fb7185;
+    --accent-purple: #c084fc;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, Helvetica, Arial, sans-serif;
+    background: var(--bg-dark);
+    color: var(--text-main);
+    overflow: hidden;
+    height: 100vh;
+    width: 100vw;
+    display: flex;
+    flex-direction: column;
+  }
+  .deck-viewport {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px 24px 8px;
+    overflow: hidden;
+  }
+  .slide {
+    display: none;
+    width: min(1440px, 96vw);
+    height: min(810px, 88vh);
+    background: linear-gradient(145deg, #0f172a 0%, #131c31 100%);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.65);
+    padding: 30px 40px 24px;
+    flex-direction: column;
+    justify-content: space-between;
+    position: relative;
+    overflow: hidden;
+  }
+  .slide.active { display: flex; }
+  .slide::before {
+    content: "";
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 5px;
+    background: linear-gradient(90deg, var(--accent-blue), var(--accent-indigo), var(--accent-emerald));
+  }
+  .slide-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+    padding-bottom: 10px;
+    margin-bottom: 12px;
+  }
+  .kicker {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.6px;
+    color: var(--accent-blue);
+    margin-bottom: 3px;
+  }
+  .slide-title {
+    font-size: 24px;
+    font-weight: 800;
+    color: #ffffff;
+    letter-spacing: -0.4px;
+    line-height: 1.2;
+  }
+  .slide-badge {
+    background: rgba(56, 189, 248, 0.12);
+    border: 1px solid rgba(56, 189, 248, 0.35);
+    color: var(--accent-blue);
+    padding: 5px 12px;
+    border-radius: 999px;
+    font-size: 11.5px;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .slide-body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 11px;
+    overflow: hidden;
+  }
+  .slide-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-top: 1px solid rgba(148, 163, 184, 0.15);
+    padding-top: 8px;
+    margin-top: 8px;
+    font-size: 11.5px;
+    color: var(--text-muted);
+  }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 13px; }
+  .grid-2-wide-left { display: grid; grid-template-columns: 1.35fr 1fr; gap: 14px; align-items: stretch; }
+  .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  .card {
+    background: rgba(30, 41, 59, 0.75);
+    border: 1px solid rgba(148, 163, 184, 0.2);
+    border-radius: 10px;
+    padding: 12px 15px;
+  }
+  .card-title {
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: var(--accent-blue);
+    margin-bottom: 5px;
+  }
+  .kpi-num {
+    font-size: 25px;
+    font-weight: 800;
+    color: #ffffff;
+    line-height: 1.15;
+  }
+  .kpi-sub {
+    font-size: 11.3px;
+    color: var(--text-muted);
+    margin-top: 3px;
+    line-height: 1.35;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 11.5px;
+    background: rgba(15, 23, 42, 0.55);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  th {
+    background: rgba(51, 65, 85, 0.65);
+    color: #e2e8f0;
+    font-weight: 700;
+    text-align: left;
+    padding: 6px 9px;
+    border-bottom: 1px solid var(--border);
+    font-size: 11px;
+  }
+  td {
+    padding: 5.5px 9px;
+    border-bottom: 1px solid rgba(51, 65, 85, 0.55);
+    color: #cbd5e1;
+    line-height: 1.32;
+  }
+  tr:last-child td { border-bottom: none; }
+  .pill {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 700;
+  }
+  .pill-green { background: rgba(52, 211, 153, 0.15); color: var(--accent-emerald); border: 1px solid rgba(52, 211, 153, 0.4); }
+  .pill-blue { background: rgba(56, 189, 248, 0.15); color: var(--accent-blue); border: 1px solid rgba(56, 189, 248, 0.4); }
+  .pill-amber { background: rgba(251, 191, 36, 0.15); color: var(--accent-amber); border: 1px solid rgba(251, 191, 36, 0.4); }
+  .pill-rose { background: rgba(251, 113, 133, 0.15); color: var(--accent-rose); border: 1px solid rgba(251, 113, 133, 0.4); }
+  .pill-purple { background: rgba(192, 132, 252, 0.15); color: var(--accent-purple); border: 1px solid rgba(192, 132, 252, 0.4); }
+  ul.clean { list-style: none; display: flex; flex-direction: column; gap: 5px; font-size: 12.2px; color: #e2e8f0; line-height: 1.38; }
+  ul.clean li { position: relative; padding-left: 15px; }
+  ul.clean li::before {
+    content: "▸";
+    position: absolute;
+    left: 0;
+    color: var(--accent-blue);
+    font-weight: bold;
+  }
+  .arch-layer {
+    background: rgba(30, 41, 59, 0.85);
+    border: 1px solid rgba(99, 102, 241, 0.35);
+    border-left: 4px solid var(--accent-blue);
+    border-radius: 8px;
+    padding: 8px 14px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11.8px;
+  }
+  .arch-arrow {
+    text-align: center;
+    color: var(--accent-blue);
+    font-size: 11.5px;
+    font-weight: 700;
+    line-height: 1;
+  }
+  .bar-row { display: flex; align-items: center; gap: 10px; margin: 4px 0; font-size: 11.8px; }
+  .bar-label { width: 165px; font-weight: 600; color: #e2e8f0; }
+  .bar-track { flex: 1; height: 15px; background: rgba(15, 23, 42, 0.8); border-radius: 99px; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 99px; }
+  .bar-val { width: 95px; text-align: right; font-weight: 700; font-size: 11.8px; }
+  .shot-card {
+    background: rgba(15, 23, 42, 0.85);
+    border: 1px solid rgba(56, 189, 248, 0.35);
+    border-radius: 10px;
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    overflow: hidden;
+  }
+  .shot-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: top left;
+    border-radius: 6px;
+    border: 1px solid rgba(148, 163, 184, 0.25);
+    cursor: zoom-in;
+    transition: transform 0.15s ease;
+  }
+  .shot-img:hover { transform: scale(1.015); }
+  .shot-cap {
+    font-size: 10.8px;
+    color: var(--accent-blue);
+    font-weight: 700;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .contributor-card {
+    background: linear-gradient(145deg, rgba(30, 41, 59, 0.9), rgba(15, 23, 42, 0.9));
+    border: 1px solid rgba(56, 189, 248, 0.35);
+    border-top: 3px solid var(--accent-blue);
+    border-radius: 10px;
+    padding: 14px 16px;
+  }
+  .contributor-name {
+    font-size: 16px;
+    font-weight: 800;
+    color: #ffffff;
+    margin-bottom: 3px;
+  }
+  .contributor-role {
+    font-size: 11.5px;
+    color: var(--accent-blue);
+    font-weight: 600;
+  }
+  .controls-bar {
+    height: 44px;
+    background: #070b14;
+    border-top: 1px solid #1e293b;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 24px;
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+  .btn {
+    background: #1e293b;
+    color: #f8fafc;
+    border: 1px solid #334155;
+    padding: 5px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 600;
+  }
+  .btn:hover { background: #334155; }
+  .notes-drawer {
+    display: none;
+    position: fixed;
+    bottom: 48px;
+    left: 24px;
+    right: 24px;
+    background: rgba(15, 23, 42, 0.96);
+    border: 1px solid var(--accent-blue);
+    border-radius: 10px;
+    padding: 14px 20px;
+    color: #e2e8f0;
+    font-size: 13.5px;
+    line-height: 1.5;
+    z-index: 100;
+    box-shadow: 0 -10px 30px rgba(0,0,0,0.6);
+  }
+  .notes-drawer.open { display: block; }
+  .lightbox {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(5, 10, 20, 0.92);
+    z-index: 999;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    padding: 24px;
+    cursor: zoom-out;
+  }
+  .lightbox.open { display: flex; }
+  .lightbox img {
+    max-width: 94vw;
+    max-height: 86vh;
+    border-radius: 10px;
+    border: 2px solid var(--accent-blue);
+    box-shadow: 0 20px 60px rgba(0,0,0,0.85);
+  }
+  .lightbox-caption {
+    margin-top: 10px;
+    font-size: 14px;
+    font-weight: 700;
+    color: #ffffff;
+  }
+  @media print {
+    body { overflow: visible; height: auto; background: #0f172a; }
+    .controls-bar, .notes-drawer, .lightbox { display: none !important; }
+    .deck-viewport { display: block; padding: 0; }
+    .slide {
+      display: flex !important;
+      width: 100vw;
+      height: 100vh;
+      page-break-after: always;
+      border-radius: 0;
+      border: none;
+      box-shadow: none;
+    }
+  }
+</style>
+</head>
+<body>
+
+<div class="deck-viewport">
+
+  <!-- SLIDE 1: DEDICATED OPENING / COVER SLIDE (PROJECT NAME & CONTRIBUTORS) -->
+  <section class="slide active" data-notes="Welcome everyone. We are Team QuadCore—Kshama Jain, Senthil Raj K, Pothukanuri Sai Venkat, and Akash H S—presenting our final project for DA231o Data Engineering at Scale at the Indian Institute of Science (IISc): WikiPulse — Real-Time Detection and Analysis of Wikipedia Knowledge Shifts.">
+    <div class="slide-header">
+      <div>
+        <div class="kicker">DA231o — Data Engineering at Scale · Indian Institute of Science (IISc), Bengaluru · 2026</div>
+        <div style="font-size:13px; color:#94a3b8; font-weight:600; margin-top:2px;">Final Course Project Presentation &amp; System Demonstration</div>
+      </div>
+      <span class="slide-badge">Team QuadCore · IISc</span>
+    </div>
+    <div class="slide-body" style="justify-content:space-between; padding:6px 0;">
+      <div class="grid-2-wide-left" style="flex:1; align-items:center;">
+        <div style="display:flex; flex-direction:column; gap:16px; padding-right:10px;">
+          <div style="display:inline-flex; align-items:center; gap:10px;">
+            <span style="background:var(--accent-blue); color:#0f172a; font-weight:900; font-size:20px; width:38px; height:38px; border-radius:10px; display:inline-flex; align-items:center; justify-content:center;">W</span>
+            <span style="font-size:13px; font-weight:800; letter-spacing:2px; color:var(--accent-blue); text-transform:uppercase;">WikiPulse Observatory Platform</span>
+          </div>
+          <h1 style="font-size:38px; font-weight:900; line-height:1.15; letter-spacing:-0.8px; color:#ffffff;">
+            WikiPulse: Real-Time Detection and Analysis of Wikipedia Knowledge Shifts
+          </h1>
+          <p style="font-size:15px; color:#cbd5e1; line-height:1.55;">
+            An end-to-end distributed streaming and lakehouse platform unifying <strong>Apache Kafka 3.9.1 (KRaft)</strong>, <strong>Apache Spark 4.2.0 (Catalyst SQL DataFrames, Watermarked Structured Streaming &amp; DataFrame-based Spark ML)</strong>, an <strong>11-Table Partitioned Parquet Lakehouse</strong>, and an <strong>8-Screen Interactive Dash + Plotly Investigation Suite</strong>.
+          </p>
+          <div style="display:flex; gap:8px; flex-wrap:wrap;">
+            <span class="pill pill-blue" style="font-size:11.5px; padding:4px 12px;">67 Continuous Days (2026-09-15 – 2026-11-20)</span>
+            <span class="pill pill-green" style="font-size:11.5px; padding:4px 12px;">21.45M Raw &rarr; 12.77M Curated Events</span>
+            <span class="pill pill-amber" style="font-size:11.5px; padding:4px 12px;">5.83 GB Gross Text Churn Processed</span>
+            <span class="pill pill-purple" style="font-size:11.5px; padding:4px 12px;">100% Proposal Fulfillment (20 / 20 Targets)</span>
+          </div>
+        </div>
+        <div class="shot-card" style="height:360px;">
+          <div class="shot-cap">
+            <span>LIVE APPLICATION PREVIEW · SCREEN 01: LIVE PULSE (/)</span>
+            <span style="color:#94a3b8; font-weight:500;">Click image to zoom</span>
+          </div>
+          <img class="shot-img" src="screenshots/01_live_pulse.png" alt="WikiPulse Live Pulse Screen" onclick="openLightbox(this.src, 'Screen 01 — Live Pulse & Replay Observatory (/)')" />
+        </div>
+      </div>
+      <div>
+        <div class="kicker" style="margin-bottom:8px;">Project Contributors — Team QuadCore</div>
+        <div class="grid-4">
+          <div class="contributor-card">
+            <div class="contributor-name">Kshama Jain</div>
+            <div class="contributor-role">Team QuadCore · IISc DA231o</div>
+            <div class="kpi-sub">Streaming Ingestion, Event-Time Windows &amp; Lakehouse Hygiene</div>
+          </div>
+          <div class="contributor-card" style="border-top-color:var(--accent-emerald);">
+            <div class="contributor-name">Senthil Raj K</div>
+            <div class="contributor-role" style="color:var(--accent-emerald);">Team QuadCore · IISc DA231o</div>
+            <div class="kpi-sub">Distributed PySpark Pipeline, Spark ML &amp; Interactive Dashboards</div>
+          </div>
+          <div class="contributor-card" style="border-top-color:var(--accent-amber);">
+            <div class="contributor-name">Pothukanuri Sai Venkat</div>
+            <div class="contributor-role" style="color:var(--accent-amber);">Team QuadCore · IISc DA231o</div>
+            <div class="kpi-sub">Zero-Inclusive Baselines, Knowledge Churn &amp; Anomaly Scoring</div>
+          </div>
+          <div class="contributor-card" style="border-top-color:var(--accent-indigo);">
+            <div class="contributor-name">Akash H S</div>
+            <div class="contributor-role" style="color:var(--accent-indigo);">Team QuadCore · IISc DA231o</div>
+            <div class="kpi-sub">Contextual Graph/Geo/Lift Wing Enrichment &amp; Scaling Benchmarks</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="slide-footer">
+      <span>WikiPulse · Team QuadCore (Kshama Jain, Senthil Raj K, Pothukanuri Sai Venkat, Akash H S) · IISc DA231o</span>
+      <span>Press ← / → to navigate · Click any screenshot to zoom · N for Speaker Notes · Slide 1 / 15</span>
+    </div>
+  </section>
+
+  <!-- SLIDE 2: PROJECT INTRODUCTION, CORE THESIS & 67-DAY DATASET STATS -->
+  <section class="slide" data-notes="Slide 2 introduces the core project thesis and the scale of data processed over our 67-day continuous collection from September 15 to November 20, 2026: 21,454,187 raw events (~9.60 GB uncompressed JSON), 12,773,366 valid curated events (100% retention), 11,588,460 content-modifying edits moving 5.83 GB of gross text churn, and 3,307,257 profiled Wikipedia pages.">
+    <div class="slide-header">
+      <div>
+        <div class="kicker">01 · Executive Introduction &amp; 67-Day Dataset Scale</div>
+        <h2 class="slide-title">Project Introduction, Distributed Thesis &amp; Headline Telemetry</h2>
+      </div>
+      <span class="slide-badge">67 Days · 2026-09-15 to 2026-11-20</span>
+    </div>
+    <div class="slide-body">
+      <div class="card" style="background:linear-gradient(90deg, rgba(56,189,248,0.12), rgba(129,140,248,0.08)); border-color:rgba(56,189,248,0.35); padding:14px 18px;">
+        <div class="card-title">Core Problem &amp; Distributed Systems Thesis</div>
+        <p style="font-size:13.2px; color:#f1f5f9; line-height:1.5;">
+          When real-world events occur—elections, aviation incidents, infrastructure outages, scientific breakthroughs, or public controversies—Wikipedia articles experience immediate surges in edit velocity, contributor diversity, byte churn, or reversion conflict. However, these signals are fragmented across raw Server-Sent Events (SSE) streams, multi-week historical archives, Analytics pageview APIs, MediaWiki link graphs, Wikidata spatial claims, and Lift Wing ML models. <strong>WikiPulse</strong> unifies these seven sources into an explainable, fault-tolerant real-time and historical intelligence platform.
+        </p>
+      </div>
+      <div class="grid-4">
+        <div class="card">
+          <div class="card-title">Raw Events Collected (67d)</div>
+          <div class="kpi-num" style="color:var(--accent-blue);">21,454,187</div>
+          <div class="kpi-sub">67 daily archives (<code>Sep 15 – Nov 20, 2026</code>) · <code>1,456.93 MB</code> <code>.jsonl.gz</code> (<strong>~9.60 GB</strong> raw JSON)</div>
+        </div>
+        <div class="card">
+          <div class="card-title">Curated Valid Events</div>
+          <div class="kpi-num" style="color:var(--accent-emerald);">12,773,366</div>
+          <div class="kpi-sub"><strong>100.0% valid retention</strong> after <code>40.46%</code> <code>categorize</code> noise filtering &amp; global <code>rcid</code> dedup (<code>1.51 GB</code> Parquet)</div>
+        </div>
+        <div class="card">
+          <div class="card-title">Gross Text Churn Processed</div>
+          <div class="kpi-num" style="color:var(--accent-amber);">5.83 GB</div>
+          <div class="kpi-sub">Across <strong>11,588,460</strong> content edits: <code>+2.20 GB</code> Net Growth vs. <strong><code>3.51 GB</code> (60.21%) Rewriting Volume</strong></div>
+        </div>
+        <div class="card">
+          <div class="card-title">Profiled Pages &amp; Alerts</div>
+          <div class="kpi-num" style="color:var(--accent-indigo);">3,307,257</div>
+          <div class="kpi-sub">Pages profiled over <code>1,128</code> zero-inclusive hrs · <strong>1,496,507</strong> windows &rarr; <strong>10,631</strong> union alerts</div>
+        </div>
+      </div>
+      <div class="grid-2-wide-left" style="flex:1;">
+        <div class="card">
+          <div class="card-title">Production Technology Stack &amp; Design Choices</div>
+          <ul class="clean" style="font-size:11.8px;">
+            <li><strong>Streaming Broker &amp; Replay:</strong> Apache Kafka 3.9.1 (ZooKeeper-free KRaft mode, <code>acks=all</code>, idempotent Snappy producer) + SSE Collector (<code>Last-Event-ID</code> cursor) + <code>1x..100x</code> Replay Producer.</li>
+            <li><strong>Distributed Compute (<code>pyspark.sql.DataFrame</code>):</strong> Apache Spark 4.2.0 Catalyst SQL DataFrames &amp; Structured Streaming (10m event-time watermark + stateful dedup) power <strong>100% of production data preparation</strong>; low-level Python RDDs are used strictly in Experiment #3 for engine benchmarking (<code>2.03x–2.86x</code> DataFrame speedup).</li>
+            <li><strong>Machine Learning (<code>pyspark.ml</code>):</strong> DataFrame-based Spark ML pipeline (<code>VectorAssembler</code> &rarr; <code>StandardScaler</code> &rarr; <code>KMeans k=6</code> &rarr; <code>RandomForestClassifier 40 trees</code>) + Wikimedia Lift Wing Revert Risk API.</li>
+            <li><strong>Lakehouse &amp; Serving UI:</strong> 11 Partitioned Snappy Parquet tables + PyArrow 26.0 zero-copy reader + 8-screen Dash 4.5 &amp; Plotly 7.1 web suite (<code>&lt; 1.35s</code> query latency).</li>
+          </ul>
+        </div>
+        <div class="shot-card" style="height:240px;">
+          <div class="shot-cap">
+            <span>SCREEN 03 · HISTORICAL INTELLIGENCE (/historical)</span>
+            <span style="color:#94a3b8;">Click to zoom</span>
+          </div>
+          <img class="shot-img" src="screenshots/03_historical_intelligence.png" alt="Historical Intelligence Screen" onclick="openLightbox(this.src, 'Screen 03 — 67-Day Historical Intelligence & Churn Decomposition (/historical)')" />
+        </div>
+      </div>
+    </div>
+    <div class="slide-footer">
+      <span>WikiPulse · Team QuadCore · IISc DA231o</span>
+      <span>Slide 2 / 15</span>
+    </div>
+  </section>
+
+  <!-- SLIDE 3: WHY FIXED THRESHOLDS FAIL -->
+  <section class="slide" data-notes="Our motivation comes from a fundamental property of Wikipedia: editing activity follows an extreme power law. Across 3.31 million pages in our 47-day baseline, 92.31% are quiet (<0.2 edits/day), while only 0.084% (2,772 pages) are chronically hyperactive (>=15 edits/day). Static rules like '>=6 edits in 5 minutes' fail in both directions: they generate 65.04% false alerts on hyperactive list pages and edit wars, while missing 40% of real shifts on quiet articles.">
+    <div class="slide-header">
+      <div>
+        <div class="kicker">02 · Problem Definition &amp; Motivation</div>
+        <h2 class="slide-title">Why Naive Fixed Thresholds Fail on Wikipedia</h2>
+      </div>
+      <span class="slide-badge">4-Order-of-Magnitude Baseline Skew</span>
+    </div>
+    <div class="slide-body">
+      <div class="grid-2">
+        <div class="card" style="border-left:4px solid var(--accent-rose);">
+          <div class="card-title" style="color:var(--accent-rose);">Failure Mode 1: Chronic False Positives (65.04% False-Alert Rate)</div>
+          <ul class="clean">
+            <li>Hyperactive list &amp; season pages (<em>Deaths in 2026</em>: <code>71.3 ed/day</code>, <code>149k views/day</code>; <em>India at the 2026 Asian Games</em>: <code>41.3 ed/day</code>) cross static rules every hour during routine maintenance.</li>
+            <li>Static rules treat <strong>destructive revert wars</strong> (e.g., 26 reverts in 1 hour with flat net growth) identically to constructive breaking news.</li>
+          </ul>
+        </div>
+        <div class="card" style="border-left:4px solid var(--accent-amber);">
+          <div class="card-title" style="color:var(--accent-amber);">Failure Mode 2: Missed Quiet-Page Shifts (60.0% Synthetic Recall)</div>
+          <ul class="clean">
+            <li><strong>92.31% of Wikipedia pages</strong> receive <code>&lt; 0.2 edits/day</code> (dormant baseline).</li>
+            <li>When a real-world event triggers <strong>5 collaborative human edits in 5m</strong> on a specialized page ($z = +49.9$) or a 2-editor <code>+38.7 KB</code> major rewrite, static rules miss it completely.</li>
+          </ul>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">Empirical 47-Day Baseline Activity Tier Distribution Across 3,307,257 Profiled Pages (<code>curated/page_baselines</code>)</div>
+        <table>
+          <thead>
+            <tr>
+              <th>Activity Tier</th>
+              <th>Daily Edit Rate Threshold</th>
+              <th>All Profiled Pages (<code>3,307,257</code>)</th>
+              <th>Mainspace <code>ns=0</code> (<code>2,306,368</code>)</th>
+              <th>Representative Articles &amp; Anomaly Detection Requirement</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span class="pill pill-blue">quiet</span></td>
+              <td><code>&lt; 0.2 edits/day</code></td>
+              <td><strong>3,052,962 (92.31%)</strong></td>
+              <td><strong>2,118,330 (91.85%)</strong></td>
+              <td>Regional/biographical pages · 4–5 collaborative edits = massive shift ($z &gt; +40$)</td>
+            </tr>
+            <tr>
+              <td><span class="pill pill-green">moderate</span></td>
+              <td><code>0.2 &le; &mu; &lt; 2.0 edits/day</code></td>
+              <td><strong>217,225 (6.57%)</strong></td>
+              <td><strong>165,675 (7.18%)</strong></td>
+              <td>Standard articles · Requires per-page zero-inclusive $(\mu, \sigma)$ normalization</td>
+            </tr>
+            <tr>
+              <td><span class="pill pill-amber">active</span></td>
+              <td><code>2.0 &le; &mu; &lt; 15.0 edits/day</code></td>
+              <td><strong>34,298 (1.04%)</strong></td>
+              <td><strong>20,835 (0.90%)</strong></td>
+              <td>Ongoing news topics · Requires editor surge ratio &amp; pageview corroboration</td>
+            </tr>
+            <tr>
+              <td><span class="pill pill-rose">hyperactive</span></td>
+              <td><code>&ge; 15.0 edits/day</code></td>
+              <td><strong>2,772 (0.084%)</strong></td>
+              <td><strong>1,528 (0.066%)</strong></td>
+              <td><em>Deaths in 2026</em> (<code>3,357</code> ed), <em>Western painting</em> (<code>2,921</code>), <em>Confectionery store</em> (<code>29.5%</code> reverts)</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="card" style="background:rgba(52,211,153,0.08); border-color:rgba(52,211,153,0.3);">
+        <div class="card-title" style="color:var(--accent-emerald);">How WikiPulse Solves Both Failure Modes</div>
+        <p style="font-size:12.5px; color:#e2e8f0;">
+          <strong>1. Zero-Inclusive Per-Page Baselines ($\mu, \sigma$ across 1,128 UTC hours)</strong> &nbsp;·&nbsp;
+          <strong>2. Session-Clustered Window Scaling ($1/18$ daily editors for 5m, $1/6$ for 1h)</strong> &nbsp;·&nbsp;
+          <strong>3. Rewriting Volume Decomposition ($\sum|\Delta| - |\sum\Delta|$)</strong> &nbsp;·&nbsp;
+          <strong>4. Pageview Corroboration Guardrail ($\ge 2.5\times$ baseline views required for <code>CONFIRMED_NEWS</code>)</strong>
+        </p>
+      </div>
+    </div>
+    <div class="slide-footer">
+      <span>WikiPulse · Team QuadCore · IISc DA231o</span>
+      <span>Slide 3 / 15</span>
+    </div>
+  </section>
+
+  <!-- SLIDE 4: ARCHITECTURE -->
+  <section class="slide" data-notes="This diagram shows our 5-layer distributed architecture. Layer 1 integrates all 7 external Wikimedia, Wikidata, and Lift Wing APIs. Layer 2 supports both live SSE / Kafka 3.9.1 KRaft streaming (plus 1x..100x historical replay) and batch curation over 67 days of archives. Layer 3 runs PySpark 4.2.0 Structured Streaming with 10-minute watermarks, batch baselines, and Spark ML (pyspark.ml). Layer 4 performs selective contextual enrichment with SHA-256 disk caching. Layer 5 serves an 8-screen Dash + Plotly application under 1.35 seconds.">
+    <div class="slide-header">
+      <div>
+        <div class="kicker">03 · System Design &amp; Distributed Architecture</div>
+        <h2 class="slide-title">End-to-End Streaming, Lakehouse &amp; Spark ML Architecture</h2>
+      </div>
+      <span class="slide-badge">Kafka 3.9.1 KRaft + PySpark 4.2.0 + 11 Parquet Tables</span>
+    </div>
+    <div class="slide-body" style="justify-content:space-between;">
+      <div class="arch-layer" style="border-left-color:var(--accent-blue);">
+        <div>
+          <strong style="color:var(--accent-blue);">LAYER 1 · 7 EXTERNAL WIKIMEDIA, WIKIDATA &amp; LIFT WING SOURCES</strong><br/>
+          <span style="color:#cbd5e1;">EventStreams SSE (<code>recentchange</code>, <code>revert_risk</code>) · MediaWiki Action API (<code>recentchanges</code>, <code>allrevisions</code>, <code>compare</code>, <code>links</code>, <code>backlinks</code>, <code>coordinates</code>) · Analytics REST API (<code>pageviews</code>, <code>bytes-difference</code>) · Wikidata (<code>wbgetentities</code>) · Lift Wing ML (<code>revertrisk-language-agnostic</code>)</span>
+        </div>
+        <span class="pill pill-blue">7 Live &amp; Batch APIs</span>
+      </div>
+      <div class="arch-arrow">▼ &nbsp; Live SSE / <code>?since=</code> Catch-Up &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; ▼ &nbsp; 67-Day Historical Archives (<code>21.45M</code> Raw Events)</div>
+      <div class="grid-2">
+        <div class="arch-layer" style="border-left-color:var(--accent-emerald);">
+          <div>
+            <strong style="color:var(--accent-emerald);">LAYER 2A · STREAMING BROKER &amp; REPLAY ENGINE</strong><br/>
+            <span style="color:#cbd5e1;">SSE Collector (<code>Last-Event-ID</code> cursor) + Replay Producer (<code>1x..100x</code>) &rarr; <strong>Kafka 3.9.1 KRaft</strong> (<code>wiki.raw.edits</code>, <code>acks=all</code>, Snappy) &rarr; Spark Bronze Stream</span>
+          </div>
+        </div>
+        <div class="arch-layer" style="border-left-color:var(--accent-emerald);">
+          <div>
+            <strong style="color:var(--accent-emerald);">LAYER 2B · HISTORICAL HYGIENE &amp; CURATION</strong><br/>
+            <span style="color:#cbd5e1;">Multi-Member Gzip Scanner (<code>269,017</code> rows recovered on Oct 27) · Drop <code>40.5%</code> <code>categorize</code> noise · Global <code>rcid</code> dedup &rarr; <code>curated/rc_events</code> (<code>12.77M</code> rows)</span>
+          </div>
+        </div>
+      </div>
+      <div class="arch-arrow">▼ &nbsp; Unified Canonical Schema Contract (<code>RAW_EDIT_SCHEMA</code>, 29 Columns, CRC32 Title Fallback ID)</div>
+      <div class="arch-layer" style="border-left-color:var(--accent-indigo);">
+        <div>
+          <strong style="color:var(--accent-indigo);">LAYER 3 · DISTRIBUTED PYSPARK 4.2.0 DATAFRAME COMPUTE, BASELINES &amp; SPARK ML (<code>pyspark.ml</code>) ENGINE</strong><br/>
+          <span style="color:#cbd5e1;">• <strong>47-Day Baselines:</strong> <code>3,307,257</code> pages ($\mu, \sigma$ over <code>1,128</code> UTC hrs) &nbsp;·&nbsp; <strong>Churn &amp; Rankings:</strong> <code>1,623</code> namespace rollups (<code>5.83 GB</code> churn), <code>23,535</code> daily ranked pages<br/>
+          • <strong>Tumbling Windows:</strong> 10m watermark + stateful dedup (<code>page_windows_5m</code>: <code>970,793</code>, <code>page_windows_1h</code>: <code>525,714</code> = <code>1,496,507</code> windows)<br/>
+          • <strong>Multi-Detector Scoring:</strong> Detector A (Fixed) + Detector B (Explainable 0–100 + 5 Additive Contributions) + Detector C (8D <code>KMeans k=6</code> &rarr; 9D <code>RandomForest 40 trees</code>)</span>
+        </div>
+        <span class="pill pill-purple">SHA-256 alert_id</span>
+      </div>
+      <div class="arch-arrow">▼ &nbsp; High-Confidence Union Alerts (<code>1,321</code> 8d Eval / <code>10,631</code> Full 67d Lake across 4 Alert Classes)</div>
+      <div class="arch-layer" style="border-left-color:var(--accent-amber);">
+        <div>
+          <strong style="color:var(--accent-amber);">LAYER 4 · SELECTIVE PRE-FILTERED CONTEXTUAL ENRICHMENT (WITH SHA-256 DISK CACHE)</strong><br/>
+          <span style="color:#cbd5e1;"><strong>Spillover Graph</strong> (<code>608</code> edges, <code>349</code> co-edited = <code>57.4%</code>) · <strong>Compare Diffs</strong> (<code>100/100</code> usable) · <strong>2-Tier Subject Geo Map</strong> (<code>73.1%–83.1%</code> located, <code>0</code> Editor IPs) · <strong>Lift Wing Revert Risk</strong> (<code>75.4%</code> Spark pre-filter on <code>7.73M</code> edits, <code>120</code> scored, 48h revert calibration $\tau=0.65$)</span>
+        </div>
+        <span class="pill pill-amber">100% Fallback Safe</span>
+      </div>
+      <div class="arch-arrow">▼ &nbsp; Partitioned Snappy Parquet Serving Tables (Sub-Second Columnar Scans: <code>0.003s – 1.342s</code>, ~14.5x Faster than JSONL.gz)</div>
+      <div class="arch-layer" style="border-left-color:var(--accent-rose);">
+        <div>
+          <strong style="color:var(--accent-rose);">LAYER 5 · 8-SCREEN INTERACTIVE DASH + PLOTLY INVESTIGATION SUITE (&lt; 1.35s SLA)</strong><br/>
+          <span style="color:#cbd5e1;"><code>[01]</code> Live Pulse &amp; Replay · <code>[02]</code> Page Investigation · <code>[03]</code> Historical Intelligence · <code>[04]</code> Anomaly Comparison · <code>[05]</code> ML Reports · <code>[06]</code> Context/Graph/Risk · <code>[07]</code> Geospatial Map · <code>[08]</code> Engineering &amp; Health</span>
+        </div>
+        <span class="pill pill-green">&lt; 2.0s SLA Met</span>
+      </div>
+    </div>
+    <div class="slide-footer">
+      <span>WikiPulse · Team QuadCore · IISc DA231o</span>
+      <span>Slide 4 / 15</span>
+    </div>
+  </section>
+
+  <!-- SLIDE 5: DATA VOLUME & FUNNEL -->
+  <section class="slide" data-notes="Here is the exact breakdown of data volume and our stage-by-stage processing funnel. Across 67 days (2026-09-15 to 2026-11-20) we collected 21,454,187 raw events (1.46 GB compressed .jsonl.gz, ~9.60 GB uncompressed JSON). After filtering 8.68 million categorize events (40.46%) and recovering 269,017 rows from a corrupted multi-member gzip file on October 27, we retained 100% of the 12,773,366 valid events in 1.51 GB of partitioned Parquet.">
+    <div class="slide-header">
+      <div>
+        <div class="kicker">04 · Data Volume, Storage Footprint &amp; Ingestion Hygiene</div>
+        <h2 class="slide-title">Multi-Week Data Volume &amp; Stage-by-Stage Processing Funnel</h2>
+      </div>
+      <span class="slide-badge">21.45M Raw Events &rarr; 12.77M Curated &rarr; 5.83 GB Text Churn</span>
+    </div>
+    <div class="slide-body">
+      <div class="card">
+        <div class="card-title">Raw vs. Uncompressed vs. Curated Parquet Storage Volume Across Collection Horizons</div>
+        <table>
+          <thead>
+            <tr>
+              <th>Dataset Collection Horizon</th>
+              <th>Calendar Span</th>
+              <th>Raw Events</th>
+              <th><code>.jsonl.gz</code> Size</th>
+              <th>Uncompressed JSON</th>
+              <th>Curated Valid Events</th>
+              <th><code>categorize</code> Dropped</th>
+              <th>Partitioned Parquet</th>
+              <th>Ingestion Time</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Full Complete Collection (67d)</strong></td>
+              <td><code>Sep 15 – Nov 20</code></td>
+              <td><strong>21,454,187</strong></td>
+              <td><strong>1,456.93 MB</strong></td>
+              <td><strong>~9.60 GB</strong></td>
+              <td><strong>12,773,366 (100.0%)</strong></td>
+              <td>8,680,821 (40.46%)</td>
+              <td><strong>1,514.30 MB</strong> (67p)</td>
+              <td><code>724.31s</code> (29.6k r/s)</td>
+            </tr>
+            <tr>
+              <td><strong>Primary Evaluation Lake (55d)</strong></td>
+              <td><code>Sep 15 – Nov 08</code></td>
+              <td><strong>17,441,561</strong></td>
+              <td><strong>1,181.71 MB</strong></td>
+              <td><strong>~7.50 GB</strong></td>
+              <td><strong>10,190,119 (100.0%)</strong></td>
+              <td>7,251,442 (41.58%)</td>
+              <td><strong>1,220.96 MB</strong> (55p)</td>
+              <td><code>614.30s</code> (28.4k r/s)</td>
+            </tr>
+            <tr>
+              <td><strong>Scaling Benchmark Slice (46d)</strong></td>
+              <td><code>Sep 15 – Oct 30</code></td>
+              <td><strong>14,398,713</strong></td>
+              <td><strong>977.74 MB</strong></td>
+              <td><strong>~6.00 GB</strong></td>
+              <td><strong>8,428,021 (100.0%)</strong></td>
+              <td>5,970,692 (41.47%)</td>
+              <td><strong>1,011.43 MB</strong> (46p)</td>
+              <td><code>508.12s</code> (28.3k r/s)</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-title">End-to-End Data Processing &amp; Reduction Funnel</div>
+          <div class="bar-row">
+            <span class="bar-label">1. Raw Stream (67d)</span>
+            <div class="bar-track"><div class="bar-fill" style="width:100%; background:var(--accent-blue);"></div></div>
+            <span class="bar-val">21,454,187</span>
+          </div>
+          <div class="bar-row">
+            <span class="bar-label">2. Curated Valid Edits</span>
+            <div class="bar-track"><div class="bar-fill" style="width:65%; background:var(--accent-emerald);"></div></div>
+            <span class="bar-val">12,773,366</span>
+          </div>
+          <div class="bar-row">
+            <span class="bar-label">3. Mainspace Edits (ns=0)</span>
+            <div class="bar-track"><div class="bar-fill" style="width:48%; background:var(--accent-indigo);"></div></div>
+            <span class="bar-val">7,832,443</span>
+          </div>
+          <div class="bar-row">
+            <span class="bar-label">4. Profiled Pages (47d)</span>
+            <div class="bar-track"><div class="bar-fill" style="width:34%; background:var(--accent-purple);"></div></div>
+            <span class="bar-val">3,307,257</span>
+          </div>
+          <div class="bar-row">
+            <span class="bar-label">5. Tumbling Windows</span>
+            <div class="bar-track"><div class="bar-fill" style="width:22%; background:var(--accent-amber);"></div></div>
+            <span class="bar-val">1,496,507</span>
+          </div>
+          <div class="bar-row">
+            <span class="bar-label">6. Union Alerts Fired</span>
+            <div class="bar-track"><div class="bar-fill" style="width:7%; background:var(--accent-rose);"></div></div>
+            <span class="bar-val">1,321–10,631</span>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title">Production Ingestion Hygiene Bugs Solved</div>
+          <ul class="clean">
+            <li><strong>Multi-Member Truncated Gzip Recovery (<code>rc_2026-10-27.jsonl.gz</code>):</strong> Built a byte-level <code>\x1f\x8b\x08</code> deflate header scanner using <code>zlib.decompressobj(16 + MAX_WBITS)</code> to salvage all <strong>269,017 rows</strong> from an interrupted resume run with zero data loss.</li>
+            <li><strong>Missing SSE <code>page_id</code> Fallback:</strong> Deterministic negative 64-bit CRC32 title hash (<code>title_page_id</code>) prevents live events without numeric IDs from being dropped or colliding.</li>
+            <li><strong>macOS Finder <code>Icon\r</code> Race Protection:</strong> Staged Parquet commits via <code>/tmp</code> (<code>safe_write_parquet</code>) and enforced <code>pathGlobFilter="*.parquet"</code>.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+    <div class="slide-footer">
+      <span>WikiPulse · Team QuadCore · IISc DA231o</span>
+      <span>Slide 5 / 15</span>
+    </div>
+  </section>
+
+  <!-- SLIDE 6: CANONICAL DATA MODELS -->
+  <section class="slide" data-notes="Our initial proposal promised 5 data models. We delivered 8 strict PySpark StructType schemas plus 2 pre-aggregated serving tables (11 Parquet tables total since page windows are split into 5m and 1h tables). Every batch and streaming stage enforces these exact schemas.">
+    <div class="slide-header">
+      <div>
+        <div class="kicker">05 · Shared Data Model &amp; Lakehouse Storage</div>
+        <h2 class="slide-title">8 Canonical PySpark <code>StructType</code> Schemas + 2 Serving Rollup Tables</h2>
+      </div>
+      <span class="slide-badge">Expanded from 5 Proposed to 11 Curated Parquet Tables</span>
+    </div>
+    <div class="slide-body">
+      <div class="card">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Canonical Schema / Parquet Table</th>
+              <th>Cols</th>
+              <th>Materialized Rows (55d / 67d)</th>
+              <th>Primary Key &amp; Engineering Role Across Batch &amp; Streaming</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>1</strong></td>
+              <td><code>RAW_EDIT_SCHEMA</code> &rarr; <code>curated/rc_events</code></td>
+              <td>29</td>
+              <td><strong>10,190,119 / 12,773,366</strong></td>
+              <td><code>rcid</code> · Partitioned by <code>day=YYYY-MM-DD</code> (<code>1.51 GB</code>); normalizes <code>~2026-...</code> temp accounts; separates <code>is_reverted</code> from <code>is_revert_action</code></td>
+            </tr>
+            <tr>
+              <td><strong>2</strong></td>
+              <td><code>HISTORICAL_BASELINE_SCHEMA</code> &rarr; <code>page_baselines</code></td>
+              <td>25</td>
+              <td><strong>3,307,257</strong></td>
+              <td><code>pageid</code> · Zero-inclusive 47d ($\mu, \sigma$ over <code>1,128</code> hrs), <code>activity_tier</code>, Analytics pageviews, <code>last_available_date</code>, <code>has_missing_data</code></td>
+            </tr>
+            <tr>
+              <td><strong>3–4</strong></td>
+              <td><code>PAGE_WINDOW_SCHEMA</code> &rarr; <code>page_windows_5m</code> &amp; <code>1h</code></td>
+              <td>23</td>
+              <td><strong>970,793 (5m) + 525,714 (1h)</strong></td>
+              <td><code>window_id</code> · <code>1,496,507</code> tumbling 5m &amp; 1h windows (<code>edits_human</code>, <code>distinct_human_editors</code>, <code>gross_bytes</code>, <code>rewriting_bytes</code>, $z$-scores)</td>
+            </tr>
+            <tr>
+              <td><strong>5</strong></td>
+              <td><code>ALERT_SCHEMA</code> &rarr; <code>curated/alerts</code></td>
+              <td>26</td>
+              <td><strong>1,321 (8d) / 10,631 (67d)</strong></td>
+              <td><code>alert_id</code> (<code>alt_</code> + SHA-256) · Outputs of Detectors A, B, and C, <code>alert_type</code>, $\ge 2$ <code>reasons</code>, additive <code>feature_contributions</code></td>
+            </tr>
+            <tr>
+              <td><strong>6</strong></td>
+              <td><code>GRAPH_EDGE_SCHEMA</code> &rarr; <code>curated/graph_edges</code></td>
+              <td>12</td>
+              <td><strong>606 – 608</strong></td>
+              <td><code>edge_id</code> · 1-hop outgoing <code>outlink</code> and incoming <code>backlink</code> edges around alerted pages with <code>co_edited_in_window</code> spillover flag (<code>349</code> active)</td>
+            </tr>
+            <tr>
+              <td><strong>7</strong></td>
+              <td><code>REVISION_DIFF_SCHEMA</code> &rarr; <code>curated/revision_diffs</code></td>
+              <td>16</td>
+              <td><strong>100</strong></td>
+              <td><code>revid</code> · MediaWiki <code>action=compare</code> sanitized plain-text snippets, added/removed lines, URL deltas (<code>100.0%</code> usable change data)</td>
+            </tr>
+            <tr>
+              <td><strong>8</strong></td>
+              <td><code>MAP_POINT_SCHEMA</code> &rarr; <code>curated/map_points</code></td>
+              <td>13</td>
+              <td><strong>159 – 160</strong></td>
+              <td><code>pageid</code> · 2-tier Wikipedia/Wikidata subject coordinates, <code>location_source</code>, <code>location_quality</code> (<code>0</code> editor IPs)</td>
+            </tr>
+            <tr>
+              <td><strong>9</strong></td>
+              <td><code>REVERT_RISK_SCHEMA</code> &rarr; <code>curated/revert_risk_eval</code></td>
+              <td>21</td>
+              <td><strong>120</strong> <em>(7.73M scanned)</em></td>
+              <td><code>revid</code> · Lift Wing ML probability, heuristic risk, <code>composite_risk</code>, and 48h ground-truth revert outcome (<code>is_reverted_actual</code>, MTTR)</td>
+            </tr>
+            <tr>
+              <td><strong>10</strong></td>
+              <td><code>curated/churn_bot_summary</code></td>
+              <td>17</td>
+              <td><strong>1,335 / 1,623</strong></td>
+              <td><code>(day, ns)</code> · Daily $\times$ namespace Human, Temp/Anon, and Bot edits, Gross Churn (<code>5.83 GB</code>), Net Growth (<code>+2.20 GB</code>), Rewriting (<code>3.51 GB</code>)</td>
+            </tr>
+            <tr>
+              <td><strong>11</strong></td>
+              <td><code>curated/rankings_daily</code></td>
+              <td>24</td>
+              <td><strong>20,333 / 23,535</strong></td>
+              <td><code>(day, pageid)</code> · Daily top articles comparing <code>raw_edit_rank</code> against <code>baseline_surge_rank</code> (<code>daily_velocity_zscore</code>)</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="slide-footer">
+      <span>WikiPulse · Team QuadCore · IISc DA231o</span>
+      <span>Slide 6 / 15</span>
+    </div>
+  </section>
+
+  <!-- SLIDE 7: BASELINES, CHURN & REWRITING VOLUME -->
+  <section class="slide" data-notes="Slide 7 highlights our statistical foundation and macro historical intelligence findings. First, we compute zero-inclusive population means and standard deviations across all 1,128 UTC hours in the 47-day baseline window without materializing a dense 3.31M x 1,128 grid. Second, decomposing 5.83 GB of gross byte churn across 11.59 million content edits over 67 days reveals that 60.21% of all byte movement on Wikipedia (3.51 GB) is rewriting and reversion conflict rather than net growth.">
+    <div class="slide-header">
+      <div>
+        <div class="kicker">06 · Zero-Inclusive Baselines &amp; Knowledge Churn Intelligence</div>
+        <h2 class="slide-title">Zero-Inclusive Moments &amp; 5.83 GB Rewriting Volume Decomposition</h2>
+      </div>
+      <span class="slide-badge">60.21% of Wikipedia Byte Movement Is Rewriting / Conflict</span>
+    </div>
+    <div class="slide-body">
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-title">1. Zero-Inclusive Sufficient Statistics (<code>47d</code>, $H = 1,128$ Hours)</div>
+          <p style="font-size:12px; color:#cbd5e1; line-height:1.42; margin-bottom:6px;">
+            Averaging only over active hours overestimates baseline velocity on quiet pages. WikiPulse computes exact zero-inclusive population moments from sparse active sums across all $H = 1,128$ hours:
+          </p>
+          <div style="background:#090e1a; padding:8px 12px; border-radius:8px; font-family:monospace; font-size:12px; color:var(--accent-blue); margin-bottom:6px;">
+            &mu;_hour = (&Sigma; x_h) / 1128 &nbsp;&nbsp;|&nbsp;&nbsp; &sigma;_hour = &radic;max(&sigma;_min&sup2;, (&Sigma; x_h&sup2;)/1128 - &mu;_hour&sup2;)
+          </div>
+          <ul class="clean" style="font-size:11.6px;">
+            <li><strong>Session-Clustered Editor Scaling:</strong> Expects $\max(0.20, \mu_{\text{daily\_editors}}/18)$ editors per <code>5m</code> window and $\max(0.35, \mu_{\text{daily\_editors}}/6)$ per <code>1h</code> window.</li>
+            <li><strong>2,000-Event Manual Audit (Exp #1):</strong> <strong>100% exact byte match</strong> (<code>gross = 2,024,277 B</code>, <code>net = +845,023 B</code>, <code>rewriting = 1,179,254 B</code>).</li>
+          </ul>
+        </div>
+        <div class="shot-card" style="height:205px;">
+          <div class="shot-cap">
+            <span>APPLICATION VIEW · SCREEN 03: HISTORICAL INTELLIGENCE (/historical)</span>
+            <span style="color:#94a3b8;">Click to zoom</span>
+          </div>
+          <img class="shot-img" src="screenshots/03_historical_intelligence.png" alt="Historical Intelligence Screen" onclick="openLightbox(this.src, 'Screen 03 — Historical Intelligence, Churn & Bot Ratio (/historical)')" />
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">67-Day Macro Historical Intelligence Summary (<code>11,588,460</code> Content Edits Across <code>1,623</code> Daily &times; Namespace Rollups)</div>
+        <table>
+          <thead>
+            <tr>
+              <th>Historical Intelligence Metric</th>
+              <th>All Namespaces (<code>67</code> Days)</th>
+              <th>Mainspace <code>ns=0</code> (<code>67</code> Days)</th>
+              <th>Empirical Takeaway</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Registered Human Edits</strong></td>
+              <td><strong>7,724,670 (66.66%)</strong></td>
+              <td><strong>5,053,210 (64.52%)</strong></td>
+              <td>Registered contributors perform two-thirds of all edits</td>
+            </tr>
+            <tr>
+              <td><strong>Anonymous &amp; Temporary (<code>~2026-...</code>) Edits</strong></td>
+              <td><strong>903,843 (7.80%)</strong></td>
+              <td><strong>797,682 (10.18%)</strong></td>
+              <td>Combined Human = <strong>74.46% overall (74.70% Mainspace)</strong>; 88.25% of anon edits hit Mainspace</td>
+            </tr>
+            <tr>
+              <td><strong>Automated Bot Edits &amp; Reverted Edits</strong></td>
+              <td><strong>2,959,947 (25.54%)</strong> · <code>884,531</code> reverts</td>
+              <td><strong>1,981,551 (25.30%)</strong> · <code>692,069</code> (<strong>8.84%</strong>) reverts</td>
+              <td>1 in 4 edits is a bot; nearly <strong>1 in 11 Mainspace edits (8.84%) is a revert</strong></td>
+            </tr>
+            <tr>
+              <td><strong>Gross Content Churn ($\sum|\Delta_i|$)</strong></td>
+              <td><strong>5.83 GB</strong> (<code>+4.02 GB</code> / <code>-1.81 GB</code>)</td>
+              <td><strong>1.97 GB</strong> (<code>+1.38 GB</code> / <code>-0.59 GB</code>)</td>
+              <td>Peak churn day: <strong>2026-11-17 (<code>181.89 MB</code> gross churn)</strong>; peak edit day: <strong>2026-11-12 (<code>238,607</code> edits)</strong></td>
+            </tr>
+            <tr>
+              <td><strong>Net Growth vs. Rewriting Volume</strong></td>
+              <td><strong>+2.20 GB Net (37.8%)</strong> vs. <strong>3.51 GB Rewriting (60.2%)</strong></td>
+              <td><strong>+0.79 GB Net (40.3%)</strong> vs. <strong>1.18 GB Rewriting (59.7%)</strong></td>
+              <td><strong>~60% of all byte movement on Wikipedia is rewriting and reversion conflict!</strong></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="slide-footer">
+      <span>WikiPulse · Team QuadCore · IISc DA231o</span>
+      <span>Slide 7 / 15</span>
+    </div>
+  </section>
+
+  <!-- SLIDE 8: MULTI-DETECTOR & SPARK ML ARCHITECTURE + SCREENSHOTS 04 & 05 -->
+  <section class="slide" data-notes="Slide 8 details our three-paradigm anomaly detection architecture alongside live screenshots of Screen 04 (Anomaly Scoring) and Screen 05 (ML Tests & Reports). Detector A is the fixed threshold baseline. Detector B is our explainable 0-to-100 historical score with 5 damped additive contributions that sum identically to the total score, plus 4-class alert disambiguation. Detector C is a two-stage Spark ML (pyspark.ml) DataFrame pipeline.">
+    <div class="slide-header">
+      <div>
+        <div class="kicker">07 · Anomaly Detection &amp; Spark ML (<code>pyspark.ml</code>) Pipeline</div>
+        <h2 class="slide-title">Three-Paradigm Scoring &amp; Two-Stage Hybrid Spark ML Architecture</h2>
+      </div>
+      <span class="slide-badge">Explainability + 100% ML Precision</span>
+    </div>
+    <div class="slide-body">
+      <div class="grid-3">
+        <div class="card" style="border-top:3px solid var(--accent-rose);">
+          <div class="card-title" style="color:var(--accent-rose);">Detector A · Fixed Threshold Rule</div>
+          <ul class="clean" style="font-size:11.6px;">
+            <li><strong>5m Rule:</strong> Mainspace (<code>ns=0</code>) with $\ge 6$ human edits &amp; $\ge 3$ distinct human editors.</li>
+            <li><strong>1h Rule:</strong> Mainspace with $\ge 15$ human edits &amp; $\ge 4$ distinct human editors.</li>
+            <li><strong>Weakness:</strong> Blind to page baseline ($\mu, \sigma$), revert ratio, and pageview corroboration.</li>
+          </ul>
+        </div>
+        <div class="card" style="border-top:3px solid var(--accent-blue);">
+          <div class="card-title" style="color:var(--accent-blue);">Detector B · Explainable Historical Score (0–100)</div>
+          <ul class="clean" style="font-size:11.6px;">
+            <li><strong>5 Additive Components:</strong> Velocity $z$-score (<code>35</code>) + Editor Surge (<code>25</code>) + Byte Churn (<code>20</code>) + Consensus/Dispute (<code>10</code>) + Pageviews (<code>10</code>).</li>
+            <li><strong>Dampening ($w_{\text{damp}}$):</strong> $0$ on bot-only; $0.55$ when $z_{\text{vel}} &lt; 2.5$.</li>
+            <li><strong>Exact Additive Parity:</strong> $\sum \text{feature\_contributions} \equiv \text{historical\_score}$ + $\ge 2$ reasons (<code>avg 4.03</code>).</li>
+          </ul>
+        </div>
+        <div class="card" style="border-top:3px solid var(--accent-emerald);">
+          <div class="card-title" style="color:var(--accent-emerald);">Detector C · Two-Stage Spark ML (<code>pyspark.ml</code>)</div>
+          <ul class="clean" style="font-size:11.6px;">
+            <li><strong>Stage 1 (<code>KMeans k=6</code>):</strong> 8D features &rarr; <code>StandardScaler</code> &rarr; <code>KMeans(k=6)</code> (<strong>Silhouette = <code>0.5546</code></strong>) &rarr; Euclidean distance $d_{\text{centroid}}$.</li>
+            <li><strong>Stage 2 (<code>RandomForest 40 Trees</code>):</strong> 8D + <code>f_centroid_distance</code> (9D) &rarr; blended $0.45 S_{\text{kmeans}} + 0.55 S_{\text{RF}}$.</li>
+          </ul>
+        </div>
+      </div>
+      <div class="grid-2" style="flex:1;">
+        <div class="shot-card" style="height:285px;">
+          <div class="shot-cap">
+            <span>SCREEN 04 · EXPLAINABLE ANOMALY SCORING (/anomaly-scoring)</span>
+            <span style="color:#94a3b8;">Click to zoom</span>
+          </div>
+          <img class="shot-img" src="screenshots/04_anomaly_scoring.png" alt="Anomaly Scoring Screen" onclick="openLightbox(this.src, 'Screen 04 — Explainable Knowledge-Shift Scoring & Single-Alert Inspector (/anomaly-scoring)')" />
+        </div>
+        <div class="shot-card" style="height:285px;">
+          <div class="shot-cap">
+            <span>SCREEN 05 · SPARK ML TESTS &amp; REPORTS (/ml-reports)</span>
+            <span style="color:#94a3b8;">Click to zoom</span>
+          </div>
+          <img class="shot-img" src="screenshots/05_ml_reports.png" alt="Spark ML Reports Screen" onclick="openLightbox(this.src, 'Screen 05 — Spark ML KMeans(k=6) Clusters & RandomForest Reports (/ml-reports)')" />
+        </div>
+      </div>
+    </div>
+    <div class="slide-footer">
+      <span>WikiPulse · Team QuadCore · IISc DA231o</span>
+      <span>Slide 8 / 15</span>
+    </div>
+  </section>
+
+  <!-- SLIDE 9: DETECTOR EVALUATION & SYNTHETIC AUDIT -->
+  <section class="slide" data-notes="Slide 9 presents the results of Experiment #2. On 5 injected positive knowledge-shift patterns and 2 negative controls, Detector B and Detector C achieve 100% positive recall (5/5) and 0 false alerts on controls, whereas Detector A misses 2 positive patterns (60% recall) and fires a false alert on routine hyperactive chatter. Across the evaluation dataset, Detector B cuts the false-alert rate from 65.04% to 9.14% (and to 1.55% on the reviewed 200-window sample), while Detector C achieves 0.00% false alerts.">
+    <div class="slide-header">
+      <div>
+        <div class="kicker">08 · Experiment #2 · Detector Comparison &amp; Synthetic Injection Audit</div>
+        <h2 class="slide-title">100% Synthetic Shift Recall &amp; 86%–100% False-Alert Reduction</h2>
+      </div>
+      <span class="slide-badge">65.04% &rarr; 9.14% (1.55% Reviewed) &rarr; 0.00% False-Alert Rate</span>
+    </div>
+    <div class="slide-body">
+      <div class="card">
+        <div class="card-title">A. Controlled Synthetic Knowledge-Shift Pattern Injection (5 Positive Patterns + 2 Negative Controls)</div>
+        <table>
+          <thead>
+            <tr>
+              <th>Injected Pattern ID &amp; Behavioral Profile</th>
+              <th>Expected Class</th>
+              <th>Detector A (Fixed)</th>
+              <th>Detector B (Historical Score)</th>
+              <th>Detector C (Spark ML)</th>
+              <th>Reasons</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>SYNTH_BREAKING_NEWS_SURGE</code> (14 edits, 9 editors, 5.7x views)</td>
+              <td><span class="pill pill-green">CONFIRMED_NEWS</span></td>
+              <td><code>True</code></td>
+              <td><strong style="color:var(--accent-emerald);">True (96.30)</strong></td>
+              <td><strong style="color:var(--accent-emerald);">True</strong></td>
+              <td><strong>5</strong></td>
+            </tr>
+            <tr>
+              <td><code>SYNTH_DEVELOPING_EVENT_BURST</code> (11 edits, 7 editors, unconfirmed views)</td>
+              <td><span class="pill pill-blue">BREAKING_NEWS_CANDIDATE</span></td>
+              <td><code>True</code></td>
+              <td><strong style="color:var(--accent-emerald);">True (88.50)</strong></td>
+              <td><strong style="color:var(--accent-emerald);">True</strong></td>
+              <td><strong>4</strong></td>
+            </tr>
+            <tr>
+              <td><code>SYNTH_EDIT_WAR_CONTROVERSY</code> (12 edits, 6 editors, 66.7% reverts)</td>
+              <td><span class="pill pill-rose">EDIT_WAR_CONTROVERSY</span></td>
+              <td><code>True</code></td>
+              <td><strong style="color:var(--accent-emerald);">True (90.00)</strong></td>
+              <td><strong style="color:var(--accent-emerald);">True</strong></td>
+              <td><strong>4</strong></td>
+            </tr>
+            <tr>
+              <td><code>SYNTH_MAJOR_REWRITE_EXPANSION</code> (9 edits/1h by 2 editors, +38.7 KB)</td>
+              <td><span class="pill pill-purple">MAJOR_REWRITE</span></td>
+              <td><strong style="color:var(--accent-rose);">Missed (False)</strong></td>
+              <td><strong style="color:var(--accent-emerald);">True (75.07)</strong></td>
+              <td><strong style="color:var(--accent-emerald);">True</strong></td>
+              <td><strong>4</strong></td>
+            </tr>
+            <tr>
+              <td><code>SYNTH_QUIET_PAGE_EMERGING_SHIFT</code> (5 edits/5m by 4 editors on quiet page)</td>
+              <td><span class="pill pill-blue">BREAKING_NEWS_CANDIDATE</span></td>
+              <td><strong style="color:var(--accent-rose);">Missed (False)</strong></td>
+              <td><strong style="color:var(--accent-emerald);">True (87.20)</strong></td>
+              <td><strong style="color:var(--accent-emerald);">True</strong></td>
+              <td><strong>4</strong></td>
+            </tr>
+            <tr>
+              <td><code>CTRL_ROUTINE_BOT_SWEEP</code> (0 human edits, 20 bot edits)</td>
+              <td><code>NONE</code> (Negative Control)</td>
+              <td><code>False</code></td>
+              <td><strong style="color:var(--accent-emerald);">False (0.00)</strong></td>
+              <td><strong style="color:var(--accent-emerald);">False</strong></td>
+              <td>4</td>
+            </tr>
+            <tr>
+              <td><code>CTRL_HYPERACTIVE_ROUTINE_CHATTER</code> (6 edits on 42 ed/hr list page)</td>
+              <td><code>NONE</code> (Negative Control)</td>
+              <td><strong style="color:var(--accent-rose);">False Alert (True)</strong></td>
+              <td><strong style="color:var(--accent-emerald);">False (24.51)</strong></td>
+              <td><strong style="color:var(--accent-emerald);">False</strong></td>
+              <td>4</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="card">
+        <div class="card-title">B. False-Alert Rate Comparison Across Evaluation Dataset &amp; Reviewed 200-Window Sample</div>
+        <table>
+          <thead>
+            <tr>
+              <th>Detector Method</th>
+              <th>Synthetic Recall</th>
+              <th>Flagged (8d Eval)</th>
+              <th>True Shifts</th>
+              <th>False Alerts</th>
+              <th>Precision</th>
+              <th>Overall False-Alert Rate</th>
+              <th>Reviewed 200-Window Sample False-Alert Rate</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Detector A: Fixed Threshold (Naive Burst = News)</strong></td>
+              <td><code>60.0% (3/5)</code></td>
+              <td>349</td>
+              <td>122</td>
+              <td>227</td>
+              <td>34.96%</td>
+              <td><span class="pill pill-rose">65.04%</span></td>
+              <td><span class="pill pill-rose">41.32% (69 / 167)</span></td>
+            </tr>
+            <tr>
+              <td><strong>Detector B: Explainable Historical Score (&ge; 65)</strong></td>
+              <td><strong>100.0% (5/5)</strong></td>
+              <td>1,028</td>
+              <td>934</td>
+              <td>94</td>
+              <td><strong>90.86%</strong></td>
+              <td><span class="pill pill-green">9.14%</span></td>
+              <td><span class="pill pill-green">1.55% (3 / 194)</span></td>
+            </tr>
+            <tr>
+              <td><strong>Detector C: Spark ML (<code>KMeans</code> + <code>RandomForest</code>)</strong></td>
+              <td><strong>100.0% (5/5)</strong></td>
+              <td>817</td>
+              <td>817</td>
+              <td>0</td>
+              <td><strong>100.00%</strong></td>
+              <td><span class="pill pill-green">0.00%</span></td>
+              <td><span class="pill pill-green">0.00% (0 / 174)</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="slide-footer">
+      <span>WikiPulse · Team QuadCore · IISc DA231o</span>
+      <span>Slide 9 / 15</span>
+    </div>
+  </section>
+
+  <!-- SLIDE 10: CONTEXTUAL ENRICHMENT + SCREENSHOTS 06 & 07 -->
+  <section class="slide" data-notes="Slide 10 covers our four contextual enrichment modules alongside live screenshots of Screen 06 (Context, Graph & Risk) and Screen 07 (Geospatial Map): the 1-hop link/backlink spillover graph (608 edges with 349 / 57.4% synchronized co-editing), sanitized MediaWiki Compare diffs (100% usable change data), our privacy-preserving 2-tier subject geospatial resolver (zero editor IPs), and Wikimedia Lift Wing Revert Risk.">
+    <div class="slide-header">
+      <div>
+        <div class="kicker">09 · Contextual Investigation &amp; External ML Calibration</div>
+        <h2 class="slide-title">Spillover Graph, Compare Diffs, Subject Geospatial Map &amp; Lift Wing Risk</h2>
+      </div>
+      <span class="slide-badge">100% Diff &amp; Lift Wing Coverage · 0 Editor IPs</span>
+    </div>
+    <div class="slide-body">
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-title">1. Topic Spillover Graph &amp; 2. Sanitized Compare Diffs</div>
+          <ul class="clean" style="font-size:11.6px;">
+            <li><strong>Spillover Graph (<code>curated/graph_edges</code>):</strong> Queries MediaWiki <code>prop=links</code> &amp; <code>list=backlinks</code> around top <code>36</code> alerted seeds; materializes <strong><code>608</code> directed edges</strong> with <strong><code>349 (57.40%)</code> co-edited spillover edges</strong> within $\pm 1\text{h}$.</li>
+            <li><strong>Compare Diffs (<code>curated/revision_diffs</code>):</strong> Strips <code>action=compare</code> HTML into plain-text snippets &amp; URL deltas; achieves <strong><code>100.0% (100 / 100)</code> usable change data</strong> ($\ge 90\%$ target met).</li>
+          </ul>
+        </div>
+        <div class="card">
+          <div class="card-title">3. Privacy-Preserving Subject Geo Map &amp; 4. Lift Wing Revert Risk</div>
+          <ul class="clean" style="font-size:11.6px;">
+            <li><strong>2-Tier Subject Geo Map (<code>0</code> Editor IPs):</strong> Tier-1 Wikipedia <code>prop=coordinates</code> + Tier-2 3-hop Wikidata <code>P625 &rarr; P276/P131/P159 &rarr; P17</code>; resolves <strong><code>73.1%–83.1%</code></strong> of alerted subjects while preserving abstract topics valid as <code>unlocated</code>.</li>
+            <li><strong>Lift Wing Revert Risk:</strong> Spark pre-filter skips <strong><code>75.40%</code> (<code>5.83M / 7.73M</code>)</strong> routine edits; <strong><code>100.0%</code> score coverage</strong>; calibrating $\tau = 0.80 \rightarrow \mathbf{0.65}$ lifts composite <strong>F1 from <code>68.57%</code> to <code>76.92%</code></strong>.</li>
+          </ul>
+        </div>
+      </div>
+      <div class="grid-2" style="flex:1;">
+        <div class="shot-card" style="height:285px;">
+          <div class="shot-cap">
+            <span>SCREEN 06 · CONTEXT, GRAPH &amp; LIFT WING RISK (/contextual-features)</span>
+            <span style="color:#94a3b8;">Click to zoom</span>
+          </div>
+          <img class="shot-img" src="screenshots/06_context_graph_risk.png" alt="Context Graph Risk Screen" onclick="openLightbox(this.src, 'Screen 06 — Topic Spillover Graph, Compare Diffs & Lift Wing Calibration (/contextual-features)')" />
+        </div>
+        <div class="shot-card" style="height:285px;">
+          <div class="shot-cap">
+            <span>SCREEN 07 · PRIVACY-PRESERVING GEOSPATIAL MAP (/geospatial-map)</span>
+            <span style="color:#94a3b8;">Click to zoom</span>
+          </div>
+          <img class="shot-img" src="screenshots/07_geospatial_map.png" alt="Geospatial Map Screen" onclick="openLightbox(this.src, 'Screen 07 — Privacy-Preserving Article-Subject Geospatial Map (/geospatial-map)')" />
+        </div>
+      </div>
+    </div>
+    <div class="slide-footer">
+      <span>WikiPulse · Team QuadCore · IISc DA231o</span>
+      <span>Slide 10 / 15</span>
+    </div>
+  </section>
+
+  <!-- SLIDE 11: HISTORICAL INTELLIGENCE & MAJOR EVENTS DISCOVERED -->
+  <section class="slide" data-notes="Slide 11 showcases the major real-world events automatically discovered by WikiPulse across September 15 to November 20, 2026 (67 days): late-November surges on the Riemann hypothesis (Nov 20), Alaska Senate election & Grand Theft Auto VI (Nov 18), and Badr Jafar (195.4 KB rewriting across 32 reverts on Nov 20); the November 13-15 FAA communication outage and nationwide ground stop (87 edits by 28 editors in 1 hour, z = +579.93); the November 7 Kraków shooting (#1 daily velocity surge at z = +721.80 with 361 edits by 81 editors); the November 4 US Midterm Elections; and the November 2 Palm Beach Learjet 60 crash (z = +597.80).">
+    <div class="slide-header">
+      <div>
+        <div class="kicker">10 · Historical Intelligence &amp; Real-World Event Discovery (<code>2026-09-15</code> to <code>2026-11-20</code>)</div>
+        <h2 class="slide-title">Major Global Events Automatically Surfaced Across 67 Days</h2>
+      </div>
+      <span class="slide-badge">23,535 Ranked Daily Articles · 10,631 Full-Lake Alerts</span>
+    </div>
+    <div class="slide-body">
+      <div class="card">
+        <table>
+          <thead>
+            <tr>
+              <th>Date(s)</th>
+              <th>Discovered Event / Article Cluster</th>
+              <th>Observed Editing Surge, Churn &amp; Contributor Metrics</th>
+              <th>WikiPulse Detection &amp; Disambiguation</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>Nov 17–20</code></td>
+              <td><strong>Late-Nov Science, Politics &amp; Media Shifts</strong><br/><em>Riemann hypothesis</em>, <em>Alaska US Senate election</em>, <em>Grand Theft Auto VI</em>, <em>Crimean Bridge</em>, <em>Badr Jafar</em></td>
+              <td>• <em>Riemann hypothesis</em> (<code>Nov 20</code>): <strong>17 human edits</strong> by <strong>10 editors</strong> in 1h ($z = +39.44$)<br/>• <em>Alaska Senate election</em> (<code>Nov 18</code>): <strong>24 edits/1h</strong> by <strong>10 editors</strong> ($z = +41.60$) · <em>GTA VI</em>: <code>20</code> ed/1h ($z=+33.0$)<br/>• <em>Badr Jafar</em> (<code>Nov 20</code>): <strong><code>195.4 KB</code> gross churn / <code>195.4 KB</code> rewriting</strong> across <code>32</code> reverts (<code>0 B</code> net!)</td>
+              <td><span class="pill pill-green">CONFIRMED_NEWS (95.08 / 91.95)</span> on <em>Riemann</em> &amp; <em>Alaska</em> vs. <span class="pill pill-rose">EDIT_WAR (90.00, ML 92.5)</span> on <em>Badr Jafar</em></td>
+            </tr>
+            <tr>
+              <td><code>Nov 13–15</code></td>
+              <td><strong>US Aviation &amp; Cloud Outage Cluster</strong><br/><em>2026 FAA communication outage</em>, <em>FAA ground stop</em>, <em>US national ground stop</em>, <em>Microsoft outage</em></td>
+              <td>• <strong>Peak 1h (<code>Nov 13 23:00Z</code>):</strong> <strong>87 human edits</strong> by <strong>28 editors</strong> ($z = +579.93$)<br/>• <strong>Next 1h (<code>Nov 14 00:00Z</code>):</strong> <strong>62 human edits</strong> by <strong>20 editors</strong> ($z = +413.27$)<br/>• <strong>Spillover:</strong> <em>FAA ground stop</em> (<code>164</code> ed / <code>75</code> editors, $z=+327.8$), <em>Microsoft outage</em> (<code>99</code> ed)</td>
+              <td><span class="pill pill-blue">CANDIDATE (86.5)</span> &rarr; <span class="pill pill-green">CONFIRMED_NEWS (97.3)</span><br/>Spark ML = <code>97.07</code> · Full 4-article spillover graph</td>
+            </tr>
+            <tr>
+              <td><code>Nov 07–09</code></td>
+              <td><strong>Kraków Public Safety Crisis</strong><br/><em>2026 Kraków shooting</em> &amp; <em>Kraków</em></td>
+              <td>• <strong>Nov 07 Daily Surge:</strong> <strong>361 human edits</strong> by <strong>81 distinct editors</strong> (<code>67.2 KB</code> gross churn, <code>54.0 KB</code> rewriting, <code>125</code> reverts · <strong>#1 Dataset Surge $z = +721.80$</strong>)</td>
+              <td><span class="pill pill-rose">EDIT_WAR (99.72)</span> during citation disputes (<code>47%</code> reverts) &rarr; <span class="pill pill-green">CONFIRMED_NEWS (97.96)</span></td>
+            </tr>
+            <tr>
+              <td><code>Nov 04–06</code></td>
+              <td><strong>2026 US Midterm Elections</strong><br/><em>US House</em> &amp; <em>Senate elections</em>, <em>120th Congress</em>, <em>Gina Hinojosa</em>, <em>Keisha Lance Bottoms</em></td>
+              <td>• <em>US House elections</em>: <strong>388 human edits</strong> by <strong>85 editors</strong> ($z = +98.05$)<br/>• <em>US Senate elections</em>: <strong>312 human edits</strong> by <strong>69 editors</strong> (<strong><code>29.72x</code> pageviews</strong>)<br/>• <em>US elections</em>: <code>239</code> ed by <strong>129 editors</strong> · <em>Gina Hinojosa</em>: <code>49</code> ed/1h by <code>26</code> editors ($z=+204.2$)</td>
+              <td>Separated <span class="pill pill-green">CONFIRMED_NEWS (97.93)</span>, <span class="pill pill-rose">EDIT_WAR (100.0)</span> on <em>Bottoms</em> (<code>57.8%</code> reverts), and <span class="pill pill-purple">MAJOR_REWRITE (86.23)</span></td>
+            </tr>
+            <tr>
+              <td><code>Nov 01–03</code></td>
+              <td><strong>Florida Learjet Aviation Accident</strong><br/><em>2026 Palm Beach County</em> &amp; <em>Greenacres Learjet 60 crash</em></td>
+              <td>• <strong>Nov 02 Daily Surge:</strong> <strong>299 human edits</strong> by <strong>116 distinct editors</strong> (<code>49.2 KB</code> churn, <code>33.2 KB</code> rewriting · <strong>#1 Daily Surge Rank $z = +597.80$</strong>)</td>
+              <td>Caught <span class="pill pill-blue">CANDIDATE (86.99)</span> (<code>14</code> ed/1h, missed by Detector A!) &amp; <span class="pill pill-green">CONFIRMED (96.99)</span> · Exact coords</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="slide-footer">
+      <span>WikiPulse · Team QuadCore · IISc DA231o</span>
+      <span>Slide 11 / 15</span>
+    </div>
+  </section>
+
+  <!-- SLIDE 12: 4 CASE STUDIES + SCREENSHOT 02 -->
+  <section class="slide" data-notes="Slide 12 compares 4 concrete case studies across all 4 alert classes alongside Screen 02 (Page Investigation). Notice how Detector A misses the Palm Beach Learjet crash (14 edits in 1 hour vs static 15-edit threshold) and misses the Mike Ditka major rewrite (2 editors vs static 4-editor threshold), while mislabeling the Keisha Lance Bottoms revert war (57.8% reverts, 16.4 KB rewriting vs +554 B net growth) as breaking news.">
+    <div class="slide-header">
+      <div>
+        <div class="kicker">11 · Multi-Detector Disambiguation &amp; Contextual Case Studies</div>
+        <h2 class="slide-title">Deep-Dive Case Studies Across All Four Knowledge-Shift Classes</h2>
+      </div>
+      <span class="slide-badge">Why Multi-Signal Scoring Outperforms Static Rules</span>
+    </div>
+    <div class="slide-body">
+      <div class="grid-2-wide-left" style="flex:1;">
+        <div style="display:flex; flex-direction:column; gap:8px;">
+          <div class="card" style="border-left:4px solid var(--accent-emerald); padding:9px 12px;">
+            <div class="card-title" style="color:var(--accent-emerald); margin-bottom:2px;">1 · CONFIRMED_NEWS: 2026 US Senate elections (Score: 97.93 | ML: 87.83)</div>
+            <p style="font-size:11.3px; color:#e2e8f0;"><code>Nov 04 09:30Z (1h)</code> · <strong>42 human edits by 11 editors</strong> ($z = +49.84$), <code>0%</code> reverts, <strong><code>29.72x</code> pageviews</strong> (<code>vel=35, ed=25, churn=19.43, cons=8.5, pv=10.0</code>). Spillover to <em>Troy Jackson</em> (<code>48</code> ed).</p>
+          </div>
+          <div class="card" style="border-left:4px solid var(--accent-blue); padding:9px 12px;">
+            <div class="card-title" style="color:var(--accent-blue); margin-bottom:2px;">2 · BREAKING_NEWS_CANDIDATE: Palm Beach Learjet 60 crash (Score: 86.99 | ML: 80.01)</div>
+            <p style="font-size:11.3px; color:#e2e8f0;"><code>Nov 03 02:30Z (1h)</code> · <strong>14 human edits by 6 editors</strong> ($z = +93.27$). <strong style="color:var(--accent-rose);">Missed by Detector A (14 &lt; 15 edits!)</strong> · Diff: <em>"+ The FAA and NTSB launched an investigation..."</em> · Exact coords (<code>26.63, -80.11</code>).</p>
+          </div>
+          <div class="card" style="border-left:4px solid var(--accent-rose); padding:9px 12px;">
+            <div class="card-title" style="color:var(--accent-rose); margin-bottom:2px;">3 · EDIT_WAR_CONTROVERSY: Keisha Lance Bottoms (Score: 100.0 | ML: 96.41)</div>
+            <p style="font-size:11.3px; color:#e2e8f0;"><code>Nov 04 07:30Z (1h)</code> · <strong>45 human edits by 25 editors</strong> ($z = +299.94$), <code>16,984 B</code> gross churn vs. <code>+554 B</code> net (<strong><code>16,430 B</code> Rewriting across 26 reverts / <code>57.8%</code>!</strong>). Separated from breaking news.</p>
+          </div>
+          <div class="card" style="border-left:4px solid var(--accent-purple); padding:9px 12px;">
+            <div class="card-title" style="color:var(--accent-purple); margin-bottom:2px;">4 · MAJOR_REWRITE: Mike Ditka &amp; US House elections (Score: 84.79 / 86.23)</div>
+            <p style="font-size:11.3px; color:#e2e8f0;"><strong>15 edits by 2 editors</strong> ($z = +99.93$, <code>+5,525 B</code> net on <em>Mike Ditka</em>); <strong>6 edits by 2 editors</strong> (<code>+13,040 B</code> in 5m on <em>US House elections</em>). <strong style="color:var(--accent-rose);">Missed by Detector A (only 2 editors!)</strong>.</p>
+          </div>
+        </div>
+        <div class="shot-card" style="height:100%;">
+          <div class="shot-cap">
+            <span>SCREEN 02 · PAGE INVESTIGATION (/investigation)</span>
+            <span style="color:#94a3b8;">Click to zoom</span>
+          </div>
+          <img class="shot-img" src="screenshots/02_page_investigation.png" alt="Page Investigation Screen" onclick="openLightbox(this.src, 'Screen 02 — Article Investigation, Additive Score Contributions, Diffs & Revert Risk (/investigation)')" />
+        </div>
+      </div>
+    </div>
+    <div class="slide-footer">
+      <span>WikiPulse · Team QuadCore · IISc DA231o</span>
+      <span>Slide 12 / 15</span>
+    </div>
+  </section>
+
+  <!-- SLIDE 13: SCALING, SHUFFLE & ENGINE BENCHMARKS + SCREENSHOT 08 -->
+  <section class="slide" data-notes="Slide 13 covers Experiments #3, #4, and #6 alongside a live screenshot of Screen 08 (Engineering & Health). Strong scaling reaches 1.69x speedup at 4 cores on a 14-day slice (2.47M rows). Weak scaling reaches 249,732 rows/sec at 4 cores. Our shuffle partition sweep proves 16 partitions (10.00s) is the global optimum. Catalyst DataFrames beat Python RDDs by 2.03x-2.86x, and stored Parquet tables answer dashboard queries ~14.5x faster than raw JSONL.gz.">
+    <div class="slide-header">
+      <div>
+        <div class="kicker">12 · Experiments #3, #4 &amp; #6 · Distributed Systems &amp; Storage Benchmarks</div>
+        <h2 class="slide-title">Strong/Weak Scaling, Shuffle Partition Sweep, RDD vs. DF &amp; Parquet Latency</h2>
+      </div>
+      <span class="slide-badge">249.7k rows/s Peak Throughput · &lt; 1.35s UI Query Latency</span>
+    </div>
+    <div class="slide-body">
+      <div class="grid-2-wide-left" style="flex:1;">
+        <div style="display:flex; flex-direction:column; gap:9px;">
+          <div class="card" style="padding:10px 13px;">
+            <div class="card-title">Exp #4A · Strong Scaling (14d, <code>2.47M</code> Rows) &amp; Exp #4B · Weak Scaling (<code>4d/Core</code>)</div>
+            <table>
+              <thead>
+                <tr><th>Cores</th><th>Strong Runtime</th><th>Speedup</th><th>Shuffle</th><th>Weak Span (Rows)</th><th>Weak Throughput</th><th>Weak Eff.</th></tr>
+              </thead>
+              <tbody>
+                <tr><td><code>local[1]</code></td><td><code>18.97s</code></td><td><code>1.00x</code></td><td>280.7 MB</td><td>4d (<code>724k</code>)</td><td>106,966 r/s</td><td><code>1.00</code></td></tr>
+                <tr><td><code>local[2]</code></td><td><code>12.20s</code></td><td><strong>1.55x</strong></td><td>280.7 MB</td><td>8d (<code>1.46M</code>)</td><td>199,498 r/s</td><td><strong><code>0.93</code></strong></td></tr>
+                <tr><td><strong><code>local[4]</code></strong></td><td><strong><code>11.21s</code></strong></td><td><strong style="color:var(--accent-emerald);">1.69x</strong></td><td><strong>280.7 MB</strong></td><td><strong>16d (<code>2.77M</code>)</strong></td><td><strong style="color:var(--accent-emerald);">249,732 r/s</strong></td><td><strong><code>0.61</code></strong></td></tr>
+                <tr><td><code>local[6]</code></td><td><code>12.40s</code></td><td><code>1.53x</code></td><td>280.8 MB</td><td>24d (<code>4.20M</code>)</td><td>218,585 r/s</td><td><code>0.35</code></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="card" style="padding:10px 13px;">
+            <div class="card-title">Exp #4C/D (Shuffle &amp; 46d Curve), Exp #3 (DF vs. RDD) &amp; Exp #6 (Parquet SLA)</div>
+            <ul class="clean" style="font-size:11.4px;">
+              <li><strong>Shuffle Sweep (<code>4..128</code> parts):</strong> <code>4p</code> (<code>11.97s</code>) &rarr; <code>8p</code> (<code>10.30s</code>) &rarr; <strong style="color:var(--accent-emerald);"><code>16p</code> (<code>10.00s</code>, <code>18.0 MB/part</code> Global Optimum)</strong> &rarr; <code>128p</code> (<code>18.05s</code>). Full <code>46d</code> (<code>8.43M</code> rows) runs in <strong><code>38.09s</code> (<code>221.3k r/s</code>)</strong>.</li>
+              <li><strong>Catalyst DataFrame vs. Python RDD (<code>747,156</code> edits):</strong> DataFrame (<strong><code>1.34s–2.16s</code></strong>) beats RDD (<code>2.72s–6.18s</code>) by <strong style="color:var(--accent-emerald);"><code>2.03x–2.86x</code></strong>.</li>
+              <li><strong>Parquet vs. JSONL.gz Query Latency:</strong> 1-day raw <code>.jsonl.gz</code> takes <code>2.15s–4.80s</code> vs. stored Parquet in <strong style="color:var(--accent-emerald);"><code>0.003s–1.342s</code> (~14.5x faster, 100% &lt; 2.0s SLA)</strong>.</li>
+            </ul>
+          </div>
+        </div>
+        <div class="shot-card" style="height:100%;">
+          <div class="shot-cap">
+            <span>SCREEN 08 · ENGINEERING &amp; HEALTH (/system)</span>
+            <span style="color:#94a3b8;">Click to zoom</span>
+          </div>
+          <img class="shot-img" src="screenshots/08_engineering_health.png" alt="Engineering Health Screen" onclick="openLightbox(this.src, 'Screen 08 — Engineering & Health: Strong Scaling, Streaming Capacity & Lake Footprint (/system)')" />
+        </div>
+      </div>
+    </div>
+    <div class="slide-footer">
+      <span>WikiPulse · Team QuadCore · IISc DA231o</span>
+      <span>Slide 13 / 15</span>
+    </div>
+  </section>
+
+  <!-- SLIDE 14: STREAMING LOAD & OUTAGE RECOVERY -->
+  <section class="slide" data-notes="Slide 14 presents Experiment #5 on streaming capacity and fault tolerance. Across 1x, 10x, 50x, and 100x replay speeds, Spark processing throughput (2,266 to 55,834 rows/sec) exceeds input rates by over 200x, finalizing closed 5-minute windows in 0.355s to 9.454s (well under the 60-second target). During a simulated outage where 123,537 backlog events including 19,379 duplicates accumulate, restarting from the Spark checkpoint drains the backlog to 0 in 13.74s with 0 duplicate alerts and 39/39 reference parity.">
+    <div class="slide-header">
+      <div>
+        <div class="kicker">13 · Experiment #5 · Streaming Load Capacity &amp; Fault-Tolerant Outage Recovery</div>
+        <h2 class="slide-title">1x–100x Streaming Load Capacity &amp; Zero-Duplicate Outage Backlog Drain</h2>
+      </div>
+      <span class="slide-badge">&lt; 9.5s Window Latency · 123,537 Backlog &rarr; 0 in 13.74s</span>
+    </div>
+    <div class="slide-body">
+      <div class="card">
+        <div class="card-title">A. Multi-Speed Streaming Replay Load vs. Measured Spark Processing Capacity (<code>1x</code>, <code>10x</code>, <code>50x</code>, <code>100x</code>)</div>
+        <table>
+          <thead>
+            <tr>
+              <th>Replay Speed Tier</th>
+              <th>Effective Input Rate (rows/s)</th>
+              <th>Measured Spark Processing Rate (rows/s)</th>
+              <th>Closed 5m Window Latency (Target &lt; 60s)</th>
+              <th>Capacity Condition ($\text{Proc} \ge \text{In}$)</th>
+              <th>SLA Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong><code>1x</code> (Real-Time Wikipedia)</strong></td>
+              <td><code>2.1 rows/s</code></td>
+              <td><strong>2,266 – 9,340 rows/s</strong></td>
+              <td><strong>0.355s – 1.850s</strong></td>
+              <td><code>&gt; 1,000x</code> processing headroom</td>
+              <td><span class="pill pill-green">Pass (&lt; 60s)</span></td>
+            </tr>
+            <tr>
+              <td><strong><code>10x</code> Accelerated Replay</strong></td>
+              <td><code>21.1 rows/s</code></td>
+              <td><strong>13,540 – 18,420 rows/s</strong></td>
+              <td><strong>0.620s – 2.710s</strong></td>
+              <td><code>&gt; 600x</code> processing headroom</td>
+              <td><span class="pill pill-green">Pass (&lt; 60s)</span></td>
+            </tr>
+            <tr>
+              <td><strong><code>50x</code> Stress Replay</strong></td>
+              <td><code>105.5 rows/s</code></td>
+              <td><strong>38,210 – 44,190 rows/s</strong></td>
+              <td><strong>0.890s – 5.420s</strong></td>
+              <td><code>&gt; 360x</code> processing headroom</td>
+              <td><span class="pill pill-green">Pass (&lt; 60s)</span></td>
+            </tr>
+            <tr>
+              <td><strong><code>100x</code> Burst Stress Load</strong></td>
+              <td><code>211.0 rows/s</code></td>
+              <td><strong>49,120 – 55,834 rows/s</strong></td>
+              <td><strong>0.950s – 9.454s</strong></td>
+              <td><code>&gt; 230x</code> processing headroom</td>
+              <td><span class="pill pill-green">Pass (&lt; 9.5s &ll; 60s)</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="card">
+        <div class="card-title">B. Controlled Processor Stop/Restart, Backlog Drain &amp; Duplicate Injection Audit (<code>2026-10-15</code>, <code>182,521</code> Unique Events)</div>
+        <table>
+          <thead>
+            <tr>
+              <th>Fault-Tolerance Benchmark Phase</th>
+              <th>Events Processed</th>
+              <th>Remaining Backlog</th>
+              <th>Drain Runtime &amp; Rate</th>
+              <th>Distinct Alerts</th>
+              <th>Duplicate Alerts</th>
+              <th>Parity vs. Uninterrupted Run</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Phase 1: Normal Pre-Failure Run (Batches 1–3)</strong></td>
+              <td><code>78,363</code></td>
+              <td><strong><code>0</code></strong></td>
+              <td><code>15.52s</code> (<code>5,049.7 r/s</code>)</td>
+              <td><code>10</code></td>
+              <td><strong><code>0</code></strong></td>
+              <td>Checkpoint committed cleanly</td>
+            </tr>
+            <tr>
+              <td><strong>Phase 2: Processor Stopped (Outage + 35% Duplicate Re-Sends)</strong></td>
+              <td><code>0</code> <em>(offline)</em></td>
+              <td><strong style="color:var(--accent-amber);"><code>123,537</code> queued</strong></td>
+              <td><em>Processor stopped</em></td>
+              <td><code>10</code></td>
+              <td><strong><code>0</code></strong></td>
+              <td><code>104,158</code> new + <code>19,379</code> duplicate events</td>
+            </tr>
+            <tr>
+              <td><strong>Phase 3: Restart from Checkpoint &amp; Backlog Drain (Batches 4–6)</strong></td>
+              <td><strong><code>123,537</code> drained</strong></td>
+              <td><strong style="color:var(--accent-emerald);"><code>0</code></strong></td>
+              <td><strong><code>13.74s</code> (<code>8,989.1 r/s</code>)</strong></td>
+              <td><strong><code>39</code> total</strong></td>
+              <td><strong style="color:var(--accent-emerald);"><code>0</code> duplicates</strong></td>
+              <td><span class="pill pill-green">100% Exact Parity (39 / 39)</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="slide-footer">
+      <span>WikiPulse · Team QuadCore · IISc DA231o</span>
+      <span>Slide 14 / 15</span>
+    </div>
+  </section>
+
+  <!-- SLIDE 15: 8-SCREEN UI GALLERY & 100% PROPOSAL ACCOMPLISHMENT AUDIT -->
+  <section class="slide" data-notes="Our final slide presents the visual gallery of all 8 screens in our interactive Dash + Plotly suite (click any thumbnail to inspect full screen) alongside our 100% fulfillment of every single feature, data model, experiment, performance target, and feature metric committed in our initial project proposal.">
+    <div class="slide-header">
+      <div>
+        <div class="kicker">14 · Interactive 8-Screen Investigation Suite Gallery &amp; Final Proposal Audit</div>
+        <h2 class="slide-title">100% Proposal Fulfillment (20 / 20 Targets Met) &amp; Application Gallery</h2>
+      </div>
+      <span class="slide-badge">All Proposal Goals Met &amp; Exceeded</span>
+    </div>
+    <div class="slide-body">
+      <div class="grid-4">
+        <div class="shot-card" style="height:132px;">
+          <div class="shot-cap"><span>01 · Live Pulse (/)</span></div>
+          <img class="shot-img" src="screenshots/01_live_pulse.png" alt="01 Live Pulse" onclick="openLightbox(this.src, '01 · Live Pulse (/)')" />
+        </div>
+        <div class="shot-card" style="height:132px;">
+          <div class="shot-cap"><span>02 · Page Investigation</span></div>
+          <img class="shot-img" src="screenshots/02_page_investigation.png" alt="02 Page Investigation" onclick="openLightbox(this.src, '02 · Page Investigation (/investigation)')" />
+        </div>
+        <div class="shot-card" style="height:132px;">
+          <div class="shot-cap"><span>03 · Historical Intel</span></div>
+          <img class="shot-img" src="screenshots/03_historical_intelligence.png" alt="03 Historical Intel" onclick="openLightbox(this.src, '03 · Historical Intelligence (/historical)')" />
+        </div>
+        <div class="shot-card" style="height:132px;">
+          <div class="shot-cap"><span>04 · Anomaly Scoring</span></div>
+          <img class="shot-img" src="screenshots/04_anomaly_scoring.png" alt="04 Anomaly Scoring" onclick="openLightbox(this.src, '04 · Anomaly Scoring (/anomaly-scoring)')" />
+        </div>
+        <div class="shot-card" style="height:132px;">
+          <div class="shot-cap"><span>05 · ML Tests &amp; Reports</span></div>
+          <img class="shot-img" src="screenshots/05_ml_reports.png" alt="05 ML Reports" onclick="openLightbox(this.src, '05 · ML Tests & Reports (/ml-reports)')" />
+        </div>
+        <div class="shot-card" style="height:132px;">
+          <div class="shot-cap"><span>06 · Context &amp; Risk</span></div>
+          <img class="shot-img" src="screenshots/06_context_graph_risk.png" alt="06 Context Graph Risk" onclick="openLightbox(this.src, '06 · Context, Graph & Risk (/contextual-features)')" />
+        </div>
+        <div class="shot-card" style="height:132px;">
+          <div class="shot-cap"><span>07 · Geospatial Map</span></div>
+          <img class="shot-img" src="screenshots/07_geospatial_map.png" alt="07 Geospatial Map" onclick="openLightbox(this.src, '07 · Geospatial Map (/geospatial-map)')" />
+        </div>
+        <div class="shot-card" style="height:132px;">
+          <div class="shot-cap"><span>08 · Engineering Health</span></div>
+          <img class="shot-img" src="screenshots/08_engineering_health.png" alt="08 Engineering Health" onclick="openLightbox(this.src, '08 · Engineering & Health (/system)')" />
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">Initial Project Proposal vs. Delivered System Accomplishment Audit (100% Complete &amp; Exceeded)</div>
+        <table>
+          <thead>
+            <tr>
+              <th>Proposal Commitment Category</th>
+              <th>Initial Proposal Target</th>
+              <th>Delivered &amp; Empirically Verified in WikiPulse</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Supported Features &amp; Data Models</strong></td>
+              <td>5 Core Features · 5 Data Models · 4 Dashboards</td>
+              <td><strong>5/5 Features + 8 Canonical PySpark Schemas + 2 Serving Tables (11 Parquet Tables) + 8 Dash Screens</strong></td>
+              <td><span class="pill pill-green">100% (Exceeded)</span></td>
+            </tr>
+            <tr>
+              <td><strong>Experimental Plan (6 Experiments)</strong></td>
+              <td>Audit/Replay · Detectors · RDD/DF · Scaling/Shuffle · Outage Recovery · JSON/Parquet</td>
+              <td><strong>6/6 Executed:</strong> 100% byte audit match, <code>0</code> replay dups, <code>2.86x</code> DF speedup, <code>1.69x</code> strong scaling, <code>16p</code> optimum, <code>13.74s</code> outage drain, <code>14.5x</code> Parquet speedup</td>
+              <td><span class="pill pill-green">6 / 6 Complete</span></td>
+            </tr>
+            <tr>
+              <td><strong>Performance SLAs (6 Metrics)</strong></td>
+              <td>$\ge 99\%$ valid retention · $0$ dup alerts · $&lt;60\text{s}$ window · $\text{Rate}\ge\text{In}$ · 4 scale metrics · $&lt;2\text{s}$ UI</td>
+              <td><strong><code>100.0%</code></strong> valid retention (<code>12.77M</code>) · <strong><code>0</code></strong> dup alerts · <strong><code>0.35s–9.45s</code></strong> window latency · <strong><code>2.3k–55.8k r/s</code></strong> rate · All 4 scale metrics · <strong><code>0.003s–1.342s</code></strong> UI queries</td>
+              <td><span class="pill pill-green">6 / 6 Met (100%)</span></td>
+            </tr>
+            <tr>
+              <td><strong>Feature Quality Targets (8 Metrics)</strong></td>
+              <td>100% synth recall ($\ge 2$ reasons) · Lower false alerts · $\ge 90\%$ diffs · $\ge 95\%$ Lift Wing · Calibrated $\tau$ · Tagged Geo · Churn match · Freshness</td>
+              <td><strong><code>100% (5/5)</code></strong> recall (<code>avg 4.03</code> reasons) · <strong><code>65.04% &rarr; 9.14% / 1.55% / 0.00%</code></strong> false alerts · <strong><code>100%</code></strong> diffs · <strong><code>100%</code></strong> Lift Wing · $\tau=0.65$ (<code>76.9% F1</code>) · <strong><code>100%</code></strong> tagged Geo (<code>0</code> IPs) · <strong><code>45</code></strong> automated tests</td>
+              <td><span class="pill pill-green">8 / 8 Met (100%)</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="slide-footer">
+      <span>WikiPulse · Team QuadCore · IISc DA231o · Thank You &amp; Live Demo!</span>
+      <span>Slide 15 / 15</span>
+    </div>
+  </section>
+
+</div>
+
+<div id="lightbox" class="lightbox" onclick="closeLightbox()">
+  <img id="lightboxImg" src="" alt="Full Screen Preview" />
+  <div id="lightboxCap" class="lightbox-caption"></div>
+</div>
+
+<div id="notesDrawer" class="notes-drawer"></div>
+
+<div class="controls-bar">
+  <div>
+    <strong>WikiPulse Final Presentation</strong> &nbsp;·&nbsp; <span id="slideCounter">Slide 1 of 15</span>
+  </div>
+  <div style="display:flex; gap:8px;">
+    <button class="btn" onclick="prevSlide()">◀ Prev</button>
+    <button class="btn" onclick="nextSlide()">Next ▶</button>
+    <button class="btn" onclick="toggleNotes()">Speaker Notes (N)</button>
+    <button class="btn" onclick="toggleFullScreen()">Fullscreen (F)</button>
+    <button class="btn" onclick="window.print()">Print / Save PDF</button>
+  </div>
+</div>
+
+<script>
+  const slides = Array.from(document.querySelectorAll('.slide'));
+  const counter = document.getElementById('slideCounter');
+  const notesDrawer = document.getElementById('notesDrawer');
+  const lightbox = document.getElementById('lightbox');
+  const lightboxImg = document.getElementById('lightboxImg');
+  const lightboxCap = document.getElementById('lightboxCap');
+  let current = 0;
+
+  function showSlide(idx) {
+    current = (idx + slides.length) % slides.length;
+    slides.forEach((s, i) => s.classList.toggle('active', i === current));
+    counter.textContent = `Slide ${current + 1} of ${slides.length}`;
+    notesDrawer.innerHTML = `<strong>Speaker Notes (Slide ${current + 1}):</strong> ${slides[current].dataset.notes || ''}`;
+  }
+  function nextSlide() { showSlide(current + 1); }
+  function prevSlide() { showSlide(current - 1); }
+  function toggleNotes() { notesDrawer.classList.toggle('open'); }
+  function toggleFullScreen() {
+    if (!document.fullscreenElement) document.documentElement.requestFullscreen();
+    else document.exitFullscreen();
+  }
+  function openLightbox(src, caption) {
+    lightboxImg.src = src;
+    lightboxCap.textContent = caption || '';
+    lightbox.classList.add('open');
+  }
+  function closeLightbox() {
+    lightbox.classList.remove('open');
+  }
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { closeLightbox(); return; }
+    if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') { e.preventDefault(); nextSlide(); }
+    else if (e.key === 'ArrowLeft' || e.key === 'PageUp') { e.preventDefault(); prevSlide(); }
+    else if (e.key === 'n' || e.key === 'N') toggleNotes();
+    else if (e.key === 'f' || e.key === 'F') toggleFullScreen();
+  });
+  showSlide(0);
+</script>
+</body>
+</html>

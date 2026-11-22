@@ -15,7 +15,7 @@
 5. [Canonical Data Model & Columnar Storage Layer](#5-canonical-data-model--columnar-storage-layer)
 6. [Streaming Ingestion, Broker Modes & Event-Time Processing](#6-streaming-ingestion-broker-modes--event-time-processing)
 7. [Historical Batch Pipeline & Zero-Inclusive Baseline Engine](#7-historical-batch-pipeline--zero-inclusive-baseline-engine)
-8. [Multi-Detector Anomaly Scoring & Spark MLlib Architecture](#8-multi-detector-anomaly-scoring--spark-mllib-architecture)
+8. [Multi-Detector Anomaly Scoring & Spark ML (`pyspark.ml`) Architecture](#8-multi-detector-anomaly-scoring--spark-ml-pysparkml-architecture)
 9. [Contextual Enrichment Subsystem](#9-contextual-enrichment-subsystem)
 10. [Interactive Serving Layer, Query Bridge & Web UI Architecture](#10-interactive-serving-layer-query-bridge--web-ui-architecture)
 11. [Process Supervision, Fault Tolerance & Idempotency Mechanisms](#11-process-supervision-fault-tolerance--idempotency-mechanisms)
@@ -35,7 +35,7 @@ WikiPulse addresses these distributed systems and analytical challenges through 
 
 1. **Unified Batch & Streaming Lambda/Kappa Hybrid Architecture:** Both live Server-Sent Events (SSE) streams and multi-week historical archives are normalized into an identical 29-column canonical schema (`RAW_EDIT_SCHEMA`) and processed through shared PySpark windowing and scoring transformations.
 2. **Zero-Inclusive Per-Page Statistical Baselines:** Per-page historical expectations ($\mu, \sigma$) are computed across all calendar days and hours—explicitly accounting for zero-edit intervals via algebraic sufficient statistics—combined with variance floors and session-clustered editor window scaling.
-3. **Multi-Paradigm Explainable & ML Anomaly Detection:** Every candidate window is evaluated simultaneously by three detectors: a naive fixed-threshold baseline (Detector A), an explainable 0–100 additive knowledge-shift scoring engine with exact feature-contribution parity (Detector B), and a two-stage unsupervised/supervised Apache Spark MLlib pipeline combining `KMeans` centroid distance with a `RandomForestClassifier` (Detector C).
+3. **Multi-Paradigm Explainable & ML Anomaly Detection:** Every candidate window is evaluated simultaneously by three detectors: a naive fixed-threshold baseline (Detector A), an explainable 0–100 additive knowledge-shift scoring engine with exact feature-contribution parity (Detector B), and a two-stage unsupervised/supervised Apache Spark ML (`pyspark.ml`) DataFrame pipeline combining `KMeans` centroid distance with a `RandomForestClassifier` (Detector C).
 4. **Targeted On-Demand Contextual Enrichment:** Expensive external lookups—article link/backlink spillover graphs, HTML revision diffs, 2-tier Wikipedia/Wikidata subject coordinates, and Wikimedia Lift Wing Revert Risk ML inference—are gated behind candidate pre-filters and backed by a local SHA-256 disk cache (`curated/cache/`) and deterministic heuristic fallbacks.
 5. **Strict Privacy & Security by Design:** Geospatial resolution maps **article subjects** via Wikipedia coordinates and Wikidata entity claims (`P625`, `P276`, `P131`, `P159`, `P17`), never collecting or geolocating editor IP addresses. MediaWiki diff HTML is sanitized into plain text via regex parser pipelines so external HTML is never rendered or executed in the browser.
 6. **End-to-End Idempotency & Fault Recovery:** Deterministic SHA-256 primary keys (`alert_id`, `window_id`, `edge_id`), Kafka idempotent producers, Spark Structured Streaming write-ahead checkpoints, and atomic file replacement guarantee zero duplicate alerts across network reconnects, process restarts, and duplicate event replays.
@@ -55,8 +55,8 @@ WikiPulse leverages a modern distributed data engineering stack spanning contain
 | **Spark-Kafka Connector** | `spark-sql-kafka-0-10` | `org.apache.spark:spark-sql-kafka-0-10_2.13:4.2.0` | Native JVM connector enabling Spark Structured Streaming to consume bounded microbatches from Kafka topics with offset checkpointing and `failOnDataLoss` enforcement. |
 | **JVM Runtime** | OpenJDK | Java 17 (`/opt/homebrew/opt/openjdk@17`) | Execution runtime for the Apache Spark JVM driver, Catalyst SQL optimizer, Tungsten execution engine, and Kafka client libraries. |
 | **Programming Language** | Python | Python 3.10 – 3.14 | Primary implementation language for collectors, PySpark pipelines, ML orchestration, API enrichment clients, process supervisor, and the Dash web server. |
-| **Distributed Compute Engine** | Apache Spark (`pyspark`) | `4.2.0` | Unified engine for batch ingestion, Catalyst SQL transformations, RDD benchmarks, Structured Streaming watermarked aggregations, and MLlib model training/inference. |
-| **Distributed Machine Learning** | Apache Spark MLlib (`pyspark.ml`) | `4.2.0` | Feature engineering (`VectorAssembler`, `StandardScaler`), unsupervised clustering (`KMeans`, `ClusteringEvaluator`), and supervised classification (`RandomForestClassifier`, `Pipeline`). |
+| **Distributed Compute Engine** | Apache Spark (`pyspark.sql.DataFrame` & Structured Streaming) | `4.2.0` | **Spark DataFrames** (`pyspark.sql.DataFrame`) power 100% of production batch curation, historical baselines, watermarked Structured Streaming windows, and anomaly scoring; low-level **RDDs** (`df.rdd.map` / `reduceByKey`) are used strictly in Experiment #3 to benchmark Catalyst DataFrames against Python RDDs. |
+| **Distributed Machine Learning** | Apache Spark ML (`pyspark.ml`) | `4.2.0` | DataFrame-based ML pipeline (`pyspark.ml.Pipeline`), feature engineering (`VectorAssembler`, `StandardScaler`), unsupervised clustering (`KMeans`, `ClusteringEvaluator`), and supervised classification (`RandomForestClassifier`, `vector_to_array`). |
 | **In-Memory Columnar Bridge** | Apache Arrow (`pyarrow`) | `26.0.0` | Zero-copy columnar data transfer (`spark.sql.execution.arrow.pyspark.enabled=true`) between JVM Spark DataFrames and Python/Dash serving structures, plus Parquet metadata inspection. |
 | **Columnar Lakehouse Storage** | Apache Parquet (Snappy) | Spark Native Parquet + Hadoop v2 Committer | Partitioned (`day=YYYY-MM-DD`, `duration=5m|1h`) and non-partitioned columnar tables stored on disk with dictionary encoding, predicate pushdown, and column projection. |
 | **Kafka Client Library** | `confluent-kafka` (librdkafka) | `2.16.1` | High-performance C-backed Python producer (`Producer`) and administrative client (`AdminClient`, `NewTopic`) configured with `enable.idempotence=True`, `acks=all`, and `snappy` compression. |
@@ -468,7 +468,7 @@ To distinguish constructive article expansion from back-and-forth content disput
 
 ---
 
-## 8. Multi-Detector Anomaly Scoring & Spark MLlib Architecture
+## 8. Multi-Detector Anomaly Scoring & Spark ML (`pyspark.ml`) Architecture
 
 Implemented in [`Repo/src/anomaly/scoring_sparkml.py`](file:///Users/senthilrajk/Downloads/002_IISc_DSBA/Data%20Engineering%20at%20Scale/Project-WikiPulse/Repo/src/anomaly/scoring_sparkml.py), WikiPulse evaluates every 5-minute and 1-hour page window across three distinct detection architectures.
 
@@ -517,9 +517,9 @@ Furthermore, `add_reasons_and_ids()` generates 4 to 5 structured, human-readable
 - **`MAJOR_REWRITE`**: Not an edit war or confirmed news, AND `distinct_human_editors <= 2` AND `gross_bytes >= 3,500`.
 - **`BREAKING_NEWS_CANDIDATE`**: All other multi-editor anomalous surges.
 
-### 8.3 Detector C: Two-Stage Hybrid Spark MLlib Pipeline (`spark_ml_score` $\in [0, 100]$)
+### 8.3 Detector C: Two-Stage Hybrid Spark ML (`pyspark.ml`) Pipeline (`spark_ml_score` $\in [0, 100]$)
 
-Detector C (`fit_and_score_spark_ml()` in [`scoring_sparkml.py`](file:///Users/senthilrajk/Downloads/002_IISc_DSBA/Data%20Engineering%20at%20Scale/Project-WikiPulse/Repo/src/anomaly/scoring_sparkml.py#L468-L666)) combines unsupervised behavioral clustering with supervised tree ensemble scoring in native PySpark MLlib:
+Detector C (`fit_and_score_spark_ml()` in [`scoring_sparkml.py`](file:///Users/senthilrajk/Downloads/002_IISc_DSBA/Data%20Engineering%20at%20Scale/Project-WikiPulse/Repo/src/anomaly/scoring_sparkml.py#L468-L666)) combines unsupervised behavioral clustering with supervised tree ensemble scoring using the DataFrame-based **`pyspark.ml`** API (`Pipeline`, `VectorAssembler`, `StandardScaler`, `KMeans`, `ClusteringEvaluator`, `RandomForestClassifier`, `vector_to_array`):
 
 1. **8-Dimensional Log-Stabilized Behavioral Feature Vector:**
    - `f_edits_human` $= \ln(1 + \text{edits\_human})$
