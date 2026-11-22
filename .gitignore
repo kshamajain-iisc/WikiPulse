@@ -96,7 +96,9 @@ ehthumbs.db
 *~
 
 # ==========================================
-# Documentation Screenshots
+# Documentation Screenshots & Backups
 # ==========================================
 screenshots/
 Documentation/screenshots/
+_backup/
+Documentation/_backup/
