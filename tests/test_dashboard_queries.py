@@ -5,6 +5,7 @@ import tempfile
 import unittest
 from datetime import datetime, timezone
 from pathlib import Path
+from unittest.mock import patch
 
 from src.dashboard_queries import DashboardPaths, DashboardQueries
 from src.spark_common import create_spark, parse_kafka_events
@@ -48,9 +49,40 @@ class DashboardQueryTests(unittest.TestCase):
             quality = queries.quality()
             self.assertEqual(quality["raw_records"], 5)
             self.assertEqual(quality["valid_records"], 5)
-            self.assertEqual(queries.historical(None, None)["timeline"], [])
+            with patch("src.dashboard_queries.CURATED_DIR", paths.curated):
+                self.assertEqual(queries.historical(None, None)["timeline"], [])
             self.assertEqual(queries.optional_records("alerts"), [])
             self.assertEqual(queries.article_titles("5m", "live"), ["A", "B"])
+
+    def test_historical_rankings_with_optional_ml_score(self):
+        queries = DashboardQueries(self.spark, DashboardPaths())
+        day = "2026-10-15"
+        tables = {
+            "churn_bot_summary": self.spark.createDataFrame(
+                [(day, 0, 12, 2, 100, 20)],
+                "day string, ns int, total_edits int, bot_edits int, gross_churn_bytes int, net_bytes int",
+            ),
+            "rankings_daily": self.spark.createDataFrame(
+                [(day, 1, "Article", 12, 100)],
+                "day string, pageid long, title string, edits_total int, gross_churn_bytes int",
+            ),
+        }
+        alerts = self.spark.createDataFrame(
+            [(day, "Article", "MAJOR_REWRITE", 82.34, 94.12)],
+            "day string, title string, alert_type string, historical_score double, spark_ml_score double",
+        )
+        with patch.object(queries, "historical_table", side_effect=tables.get):
+            for has_ml_score in (False, True):
+                with self.subTest(has_ml_score=has_ml_score):
+                    tables["alerts"] = alerts if has_ml_score else alerts.drop("spark_ml_score")
+                    data = queries.historical(day, day)
+                    self.assertEqual(data["metrics"]["edits"], 12)
+                    self.assertEqual(data["timeline"][0]["day"], day)
+                    self.assertEqual(data["daily_alerts"][0]["major_rewrite"], 1)
+                    rank = data["rankings"][0]
+                    self.assertEqual(rank["detected_shifts"], 1)
+                    self.assertEqual(rank["peak_anomaly_score"], 82.34)
+                    self.assertEqual(rank["peak_ml_score"], 94.12 if has_ml_score else None)
 
 
 if __name__ == "__main__":

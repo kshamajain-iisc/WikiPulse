@@ -12,6 +12,7 @@ from pathlib import Path
 from pyspark import StorageLevel
 from pyspark.sql import DataFrame, SparkSession, functions as F
 
+from src.config.settings import CURATED_DIR
 from src.page_features import compare_history, live_edits, page_windows
 from src.spark_common import RAW_PATH, ROOT, reparse_stored_events
 
@@ -90,6 +91,23 @@ class DashboardQueries:
     def table(self, name: str) -> DataFrame | None:
         """Resolve one optional curated table from the configured roots."""
         for root in (self.paths.history, self.paths.curated):
+            path = root / name
+            if has_table(path):
+                return self.spark.read.option("pathGlobFilter", "*.parquet").parquet(str(path))
+        return None
+
+    def historical_table(self, name: str) -> DataFrame | None:
+        """Resolve historical curated data, honoring an explicitly configured lake."""
+        roots = [self.paths.curated, self.paths.history]
+        if self.paths.curated == ROOT / "data/curated":
+            roots.insert(0, CURATED_DIR)
+        else:
+            roots.append(CURATED_DIR)
+        seen = set()
+        for root in roots:
+            if root in seen:
+                continue
+            seen.add(root)
             path = root / name
             if has_table(path):
                 return self.spark.read.option("pathGlobFilter", "*.parquet").parquet(str(path))
@@ -367,8 +385,8 @@ class DashboardQueries:
 
     def historical(self, start: str | None, end: str | None) -> dict:
         """Aggregate compact canonical summaries; never scan the full event lake interactively."""
-        churn_bot = self.table("churn_bot_summary")
-        rankings_daily = self.table("rankings_daily")
+        churn_bot = self.historical_table("churn_bot_summary")
+        rankings_daily = self.historical_table("rankings_daily")
         missing = [
             name for name, frame in (
                 ("churn_bot_summary", churn_bot), ("rankings_daily", rankings_daily)
@@ -407,15 +425,112 @@ class DashboardQueries:
             F.col("gross_churn_bytes").alias("gross_bytes"),
             "net_bytes",
         ).orderBy("day")
-        ranking = rk.groupBy("title").agg(
+        ranking_aggs = [
             F.sum("edits_total").alias("edits"),
             F.sum("gross_churn_bytes").alias("gross_bytes"),
-        ).orderBy(F.desc("edits"), "title")
+        ]
+        if "edits_human" in rk.columns:
+            ranking_aggs.append(F.sum("edits_human").alias("human"))
+        if "edits_bot" in rk.columns:
+            ranking_aggs.append(F.sum("edits_bot").alias("bots"))
+        if "net_bytes" in rk.columns:
+            ranking_aggs.append(F.sum("net_bytes").alias("net_bytes"))
+        if "rewriting_bytes" in rk.columns:
+            ranking_aggs.append(F.sum("rewriting_bytes").alias("rewriting_bytes"))
+        if "distinct_editors" in rk.columns:
+            ranking_aggs.append(F.max("distinct_editors").alias("peak_editors"))
+        ranking = rk.groupBy("title").agg(*ranking_aggs).orderBy(F.desc("edits"), "title")
+        ranking_rows = records(ranking, 50)
+
+        # Optional contextual & anomaly enrichment for the Historical Intelligence view
+        alerts_df = self.historical_table("alerts")
+        daily_alerts = []
+        alert_stats_by_title = {}
+        if alerts_df is not None:
+            al = alerts_df
+            if "is_injected_synthetic" in al.columns:
+                al = al.filter(~F.coalesce(F.col("is_injected_synthetic"), F.lit(False)))
+            if start and "day" in al.columns:
+                al = al.filter(F.col("day") >= start)
+            if end and "day" in al.columns:
+                al = al.filter(F.col("day") <= end)
+            if "day" in al.columns and "alert_type" in al.columns:
+                daily_agg = (
+                    al.groupBy(F.col("day").cast("string").alias("day"))
+                    .agg(
+                        F.count("*").alias("total_alerts"),
+                        F.sum(F.when(F.col("alert_type") == "CONFIRMED_NEWS", 1).otherwise(0)).alias("confirmed_news"),
+                        F.sum(F.when(F.col("alert_type") == "BREAKING_NEWS_CANDIDATE", 1).otherwise(0)).alias("breaking_news"),
+                        F.sum(F.when(F.col("alert_type") == "EDIT_WAR_CONTROVERSY", 1).otherwise(0)).alias("edit_war"),
+                        F.sum(F.when(F.col("alert_type") == "MAJOR_REWRITE", 1).otherwise(0)).alias("major_rewrite"),
+                    )
+                    .orderBy("day")
+                )
+                daily_alerts = records(daily_agg, 366)
+            if ranking_rows and "title" in al.columns:
+                top_titles = [r["title"] for r in ranking_rows if r.get("title")]
+                score_aggregates = [
+                    F.round(F.max(column), 2).alias(alias)
+                    for column, alias in (
+                        ("historical_score", "peak_anomaly_score"),
+                        ("spark_ml_score", "peak_ml_score"),
+                    )
+                    if column in al.columns
+                ]
+                per_title = (
+                    al.filter(F.col("title").isin(*top_titles))
+                    .groupBy("title")
+                    .agg(F.count("*").alias("detected_shifts"), *score_aggregates)
+                )
+                for row in records(per_title, 100):
+                    alert_stats_by_title[row["title"]] = row
+
+        map_df = self.historical_table("map_points")
+        location_by_title = {}
+        if map_df is not None and ranking_rows and "title" in map_df.columns:
+            top_titles = [r["title"] for r in ranking_rows if r.get("title")]
+            loc_rows = (
+                map_df.filter(F.col("title").isin(*top_titles))
+                .groupBy("title")
+                .agg(
+                    F.first("country_or_region", ignorenulls=True).alias("country_or_region"),
+                    F.first("location_source", ignorenulls=True).alias("location_source"),
+                )
+            )
+            for row in records(loc_rows, 100):
+                location_by_title[row["title"]] = row
+
+        for r in ranking_rows:
+            t = r.get("title")
+            a_stat = alert_stats_by_title.get(t, {})
+            l_stat = location_by_title.get(t, {})
+            r["detected_shifts"] = a_stat.get("detected_shifts", 0)
+            r["peak_anomaly_score"] = a_stat.get("peak_anomaly_score")
+            r["peak_ml_score"] = a_stat.get("peak_ml_score")
+            r["subject_location"] = l_stat.get("country_or_region") or "—"
+
+        pb_df = self.historical_table("page_baselines")
+        baseline_tiers = []
+        if pb_df is not None and "activity_tier" in pb_df.columns:
+            tier_agg = (
+                pb_df.groupBy("activity_tier")
+                .agg(
+                    F.count("*").alias("pages_count"),
+                    F.round(F.avg("avg_daily_edits"), 2).alias("mean_daily_edits"),
+                    F.round(F.avg("baseline_revert_ratio") * 100.0, 2).alias("mean_revert_pct"),
+                    F.round(F.avg("baseline_bot_ratio") * 100.0, 2).alias("mean_bot_pct"),
+                )
+                .orderBy(F.desc("pages_count"))
+            )
+            baseline_tiers = records(tier_agg, 10)
+
         return {
             "metrics": metrics,
             "timeline": records(timeline, 366),
-            "rankings": records(ranking, 20),
+            "rankings": ranking_rows,
             "baseline": self.optional_records("page_baselines") or self.optional_records("baselines_5m"),
+            "daily_alerts": daily_alerts,
+            "baseline_tiers": baseline_tiers,
         }
 
     def article_titles(self, duration: str, view: str) -> list[str]:

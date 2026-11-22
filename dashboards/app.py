@@ -4,7 +4,7 @@ import argparse
 from pathlib import Path
 
 from dash import Dash
-from flask import jsonify, request
+from flask import Response, jsonify, request
 
 from dashboards.callbacks import register_callbacks
 from dashboards.data_service import DashboardDataService
@@ -15,15 +15,37 @@ from src.spark_common import ROOT, create_spark
 from src.local_supervisor import request_stream_restart, stream_health
 
 
-def create_app(service):
+def create_app(service, activity_workspace=None):
     """Build the UI without creating Spark; tests can inject a small fake service."""
     app = Dash(
         __name__, assets_folder=str(Path(__file__).parent / "assets"),
         suppress_callback_exceptions=True, title="WikiPulse · Knowledge intelligence",
         update_title="Refreshing observations…",
     )
-    app.layout = shell()
-    register_callbacks(app, service)
+    app.layout = lambda: shell(activity=activity_workspace is not None)
+    register_callbacks(app, service, activity_workspace)
+    if activity_workspace is not None:
+        from dashboards.activity_ui import register_activity_callbacks
+        register_activity_callbacks(app, activity_workspace)
+
+        @app.server.get("/api/activity/jobs/<job_id>")
+        def activity_job(job_id):
+            result = activity_workspace.get(job_id)
+            return jsonify(result or {"error": "Request not found"}), 200 if result else 404
+
+        @app.server.get("/api/activity/jobs/<job_id>/log")
+        def activity_job_log(job_id):
+            result = activity_workspace.get(job_id)
+            if result is None:
+                return jsonify({"error": "Request not found"}), 404
+            import json
+            return Response(json.dumps(result, indent=2), mimetype="application/json",
+                            headers={"Content-Disposition": f'attachment; filename="activity-{result["id"]}.json"'})
+
+        @app.server.get("/api/activity/console/log")
+        def activity_console_log():
+            return Response(activity_workspace.history.download(), mimetype="application/x-ndjson",
+                            headers={"Content-Disposition": 'attachment; filename="wikipulse-processing-history.jsonl"'})
 
     @app.server.get("/healthz")
     def health():
@@ -62,10 +84,14 @@ def main():
     try:
         paths = DashboardPaths(live=args.live, history=args.history, curated=args.curated)
         service = DashboardDataService(DashboardQueries(spark, paths))
-        app = create_app(service)
+        from dashboards.activity_jobs import ActivityWorkspace
+        workspace = ActivityWorkspace(paths)
+        app = create_app(service, activity_workspace=workspace)
         print(f"WikiPulse dashboards: http://127.0.0.1:{args.port}", flush=True)
         app.run(host="127.0.0.1", port=args.port, debug=False, use_reloader=False)
     finally:
+        if "workspace" in locals():
+            workspace.close()
         spark.stop()
 
 

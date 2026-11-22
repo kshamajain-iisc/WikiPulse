@@ -60,6 +60,20 @@ def render_dashboard(service, pathname, search, duration, view, title, start, en
                 f"{mode} · {data.get('scope', 'Waiting for observations')}{range_label} · "
                 f"Source: {source} · Latest event: {latest_label or 'unavailable'}"
             )
+    elif page_name in (
+        "historical",
+        "anomaly_scoring",
+        "ml_reports",
+        "contextual_features",
+        "geospatial_map",
+        "milestone4",
+        "milestone5",
+        "milestone6",
+    ):
+        status = (
+            "HISTORICAL CURATED LAKE · Last refresh: "
+            + data.get("loaded_at", "pending")
+        )
     else:
         status = "READ-ONLY EVIDENCE · Last refresh: " + data.get("loaded_at", "pending")
     titles = data.get("articles") or [row["title"] for row in data.get("rankings", [])]
@@ -69,7 +83,7 @@ def render_dashboard(service, pathname, search, duration, view, title, start, en
     return page_module.render(data), status, options, navigation(pathname)
 
 
-def register_callbacks(app, service):
+def register_callbacks(app, service, activity_workspace=None):
     @app.callback(
         Output("page-body", "children"), Output("source-status", "children"),
         Output("article", "options"),
@@ -81,6 +95,8 @@ def register_callbacks(app, service):
     )
     def refresh_page(pathname, search, tick, duration, view, title, historical_range, replay_frame, replay_speed):
         path = pathname or "/"
+        if activity_workspace is not None and path in ("/", "/investigation"):
+            return [], "", []
         # Historical evidence is driven by its date controls; relationship and
         # health views change only on navigation. Ignore irrelevant global
         # controls and timer ticks so they cannot queue expensive Spark work.

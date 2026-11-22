@@ -71,6 +71,16 @@ def notice(title, description):
                      html.Div([html.Strong(title), html.P(description)])], className="notice")
 
 
+def pill_row(items):
+    """Render compact status badges used by activity processing details."""
+    if not items:
+        return None
+    return html.Div([
+        html.Span([html.Span(f"{label}: ", className="pill-label"), html.Strong(str(value))], className="pill")
+        for label, value in items
+    ], className="pill-row")
+
+
 def table(rows, columns, article_links=False):
     """Render bounded server results safely as text; no untrusted HTML."""
     if not rows:
