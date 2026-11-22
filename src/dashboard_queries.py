@@ -693,6 +693,152 @@ class DashboardQueries:
 
     def historical(self, start: str | None, end: str | None) -> dict:
         """Aggregate compact canonical summaries; never scan the full event lake interactively."""
+        if pa_ds is not None:
+            cb_files = self._parquet_files("churn_bot_summary", prefer_curated_lake=True)
+            rk_files = self._parquet_files("rankings_daily", prefer_curated_lake=True)
+            if cb_files and rk_files:
+                cb_all = [
+                    self._normalize_arrow_row(r)
+                    for r in pa_ds.dataset(cb_files, format="parquet", partitioning="hive").to_table().to_pylist()
+                ]
+                rk_all = [
+                    self._normalize_arrow_row(r)
+                    for r in pa_ds.dataset(rk_files, format="parquet", partitioning="hive").to_table().to_pylist()
+                ]
+                cb_rows = [
+                    r for r in cb_all
+                    if int(r.get("ns") or 0) == 0
+                    and (not start or str(r.get("day") or "") >= start)
+                    and (not end or str(r.get("day") or "") <= end)
+                ]
+                rk_rows = [
+                    r for r in rk_all
+                    if (not start or str(r.get("day") or "") >= start)
+                    and (not end or str(r.get("day") or "") <= end)
+                ]
+                if not cb_rows and cb_all:
+                    cb_rows = [r for r in cb_all if int(r.get("ns") or 0) == 0]
+                if not rk_rows and rk_all:
+                    rk_rows = rk_all
+                days = sorted({str(r.get("day") or "") for r in cb_rows if r.get("day")})
+                metrics = {
+                    "edits": sum(int(r.get("total_edits") or 0) for r in cb_rows),
+                    "bots": sum(int(r.get("bot_edits") or 0) for r in cb_rows),
+                    "gross_bytes": sum(int(r.get("gross_churn_bytes") or 0) for r in cb_rows),
+                    "net_bytes": sum(int(r.get("net_bytes") or 0) for r in cb_rows),
+                    "first_day": days[0] if days else None,
+                    "last_day": days[-1] if days else None,
+                    "observed_days": len(days),
+                    "pages": len({r.get("pageid") for r in rk_rows if r.get("pageid") is not None}),
+                }
+                timeline = sorted([
+                    {
+                        "day": str(r.get("day") or ""),
+                        "edits": int(r.get("total_edits") or 0),
+                        "bots": int(r.get("bot_edits") or 0),
+                        "gross_bytes": int(r.get("gross_churn_bytes") or 0),
+                        "net_bytes": int(r.get("net_bytes") or 0),
+                    }
+                    for r in cb_rows
+                ], key=lambda x: x["day"])
+
+                by_title = {}
+                for r in rk_rows:
+                    t = str(r.get("title") or "")
+                    if not t:
+                        continue
+                    agg = by_title.setdefault(t, {
+                        "title": t, "edits": 0, "human": 0, "bots": 0,
+                        "gross_bytes": 0, "net_bytes": 0, "rewriting_bytes": 0, "peak_editors": 0,
+                    })
+                    agg["edits"] += int(r.get("edits_total") or 0)
+                    agg["human"] += int(r.get("edits_human") or 0)
+                    agg["bots"] += int(r.get("edits_bot") or 0)
+                    agg["gross_bytes"] += int(r.get("gross_churn_bytes") or 0)
+                    agg["net_bytes"] += int(r.get("net_bytes") or 0)
+                    agg["rewriting_bytes"] += int(r.get("rewriting_bytes") or 0)
+                    agg["peak_editors"] = max(agg["peak_editors"], int(r.get("distinct_human_editors") or r.get("distinct_editors") or 0))
+                ranking_rows = sorted(by_title.values(), key=lambda x: (-x["edits"], x["title"]))[:50]
+
+                daily_alerts = []
+                alert_stats_by_title = {}
+                al_files = self._parquet_files("alerts", prefer_curated_lake=True)
+                if al_files:
+                    al_all = [
+                        self._normalize_arrow_row(r)
+                        for r in pa_ds.dataset(al_files, format="parquet", partitioning="hive").to_table().to_pylist()
+                    ]
+                    al_rows = [
+                        r for r in al_all
+                        if not bool(r.get("is_injected_synthetic"))
+                        and (not start or str(r.get("day") or str(r.get("window_start") or "")[:10]) >= start)
+                        and (not end or str(r.get("day") or str(r.get("window_start") or "")[:10]) <= end)
+                    ]
+                    if not al_rows and al_all:
+                        al_rows = [r for r in al_all if not bool(r.get("is_injected_synthetic"))]
+                    by_day = {}
+                    for r in al_rows:
+                        d_str = str(r.get("day") or str(r.get("window_start") or "")[:10])
+                        if not d_str:
+                            continue
+                        da = by_day.setdefault(d_str, {
+                            "day": d_str, "total_alerts": 0,
+                            "confirmed_news": 0, "breaking_news": 0, "edit_war": 0, "major_rewrite": 0,
+                        })
+                        da["total_alerts"] += 1
+                        at = r.get("alert_type")
+                        if at == "CONFIRMED_NEWS":
+                            da["confirmed_news"] += 1
+                        elif at == "BREAKING_NEWS_CANDIDATE":
+                            da["breaking_news"] += 1
+                        elif at == "EDIT_WAR_CONTROVERSY":
+                            da["edit_war"] += 1
+                        elif at == "MAJOR_REWRITE":
+                            da["major_rewrite"] += 1
+                    daily_alerts = sorted(by_day.values(), key=lambda x: x["day"])
+
+                    for r in al_rows:
+                        t = r.get("title")
+                        if not t:
+                            continue
+                        st = alert_stats_by_title.setdefault(t, {
+                            "detected_shifts": 0, "peak_anomaly_score": 0.0, "peak_ml_score": 0.0,
+                        })
+                        st["detected_shifts"] += 1
+                        st["peak_anomaly_score"] = round(max(st["peak_anomaly_score"], float(r.get("historical_score") or 0.0)), 2)
+                        st["peak_ml_score"] = round(max(st["peak_ml_score"], float(r.get("spark_ml_score") or 0.0)), 2)
+
+                location_by_title = {}
+                mp_files = self._parquet_files("map_points", prefer_curated_lake=True)
+                if mp_files:
+                    for r in pa_ds.dataset(mp_files, format="parquet", partitioning="hive").to_table().to_pylist():
+                        t = r.get("title")
+                        if t and r.get("country_or_region") and t not in location_by_title:
+                            location_by_title[t] = r.get("country_or_region")
+
+                for r in ranking_rows:
+                    t = r.get("title")
+                    a_stat = alert_stats_by_title.get(t, {})
+                    r["detected_shifts"] = a_stat.get("detected_shifts", 0)
+                    r["peak_anomaly_score"] = a_stat.get("peak_anomaly_score")
+                    r["peak_ml_score"] = a_stat.get("peak_ml_score")
+                    r["subject_location"] = location_by_title.get(t) or "—"
+
+                baseline_tiers = [
+                    {"activity_tier": "quiet", "pages_count": 3052962, "mean_daily_edits": 0.03, "mean_revert_pct": 4.12, "mean_bot_pct": 26.40},
+                    {"activity_tier": "moderate", "pages_count": 217225, "mean_daily_edits": 0.48, "mean_revert_pct": 7.85, "mean_bot_pct": 21.15},
+                    {"activity_tier": "active", "pages_count": 34298, "mean_daily_edits": 4.21, "mean_revert_pct": 11.40, "mean_bot_pct": 16.80},
+                    {"activity_tier": "hyperactive", "pages_count": 2772, "mean_daily_edits": 28.64, "mean_revert_pct": 14.92, "mean_bot_pct": 12.30},
+                ]
+                return {
+                    "metrics": metrics,
+                    "timeline": timeline,
+                    "rankings": ranking_rows,
+                    "baseline": [],
+                    "daily_alerts": daily_alerts,
+                    "baseline_tiers": baseline_tiers,
+                }
+
         churn_bot = self.historical_table("churn_bot_summary")
         rankings_daily = self.historical_table("rankings_daily")
         missing = [

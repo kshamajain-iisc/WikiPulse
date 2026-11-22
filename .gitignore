@@ -94,3 +94,9 @@ ehthumbs.db
 *.swp
 *.swo
 *~
+
+# ==========================================
+# Documentation Screenshots
+# ==========================================
+screenshots/
+Documentation/screenshots/

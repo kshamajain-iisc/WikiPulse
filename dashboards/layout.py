@@ -6,10 +6,10 @@ ROUTES = [
     ("/", "01", "Live pulse"),
     ("/investigation", "02", "Page investigation"),
     ("/historical", "03", "Historical intelligence"),
-    ("/anomaly-scoring", "04", "Anomaly scoring"),
-    ("/ml-reports", "05", "ML tests & reports"),
-    ("/contextual-features", "06", "Context, graph & risk"),
-    ("/geospatial-map", "07", "Geospatial map"),
+    ("/geospatial-map", "04", "Geospatial map"),
+    ("/contextual-features", "05", "Context, graph & risk"),
+    ("/anomaly-scoring", "06", "Anomaly scoring"),
+    ("/ml-reports", "07", "ML tests & reports"),
     ("/system", "08", "Engineering & health"),
 ]
 
