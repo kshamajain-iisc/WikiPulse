@@ -14,16 +14,16 @@ MODE_OPTIONS = [
 ]
 
 RANGE_OPTIONS = [
-    {"label": "[Days] All 62 Curated Days (Sep 15 – Nov 15)", "value": "62d"},
-    {"label": "[Days] Last 30 Curated Days (Oct 17 – Nov 15)", "value": "30d"},
-    {"label": "[Days / Windows] Evaluation 15 Days (Nov 01 – Nov 15)", "value": "15d"},
-    {"label": "[Days / Windows] Last 8 Curated Days (Nov 08 – Nov 15)", "value": "8d"},
+    {"label": "[Days] All 67 Curated Days (Sep 15 – Nov 20)", "value": "67d"},
+    {"label": "[Days] Last 30 Curated Days (Oct 22 – Nov 20)", "value": "30d"},
+    {"label": "[Days / Windows] Evaluation 20 Days (Nov 01 – Nov 20)", "value": "20d"},
+    {"label": "[Days / Windows] Last 8 Curated Days (Nov 13 – Nov 20)", "value": "8d"},
     {"label": "[Days] Baseline 47 Days (Sep 15 – Oct 31)", "value": "baseline_47d"},
     {"label": "[Windows / Day] Peak Day · Nov 04, 2026 (24h)", "value": "day_2026-11-04"},
-    {"label": "[Windows / Day] Final Day · Nov 15, 2026 (24h)", "value": "day_2026-11-15"},
+    {"label": "[Windows / Day] Final Day · Nov 20, 2026 (24h)", "value": "day_2026-11-20"},
     {"label": "[Windows] Peak 6-Hour Window (Nov 04 12:00–18:00 UTC)", "value": "win_6h_peak"},
-    {"label": "[Windows] Final 6-Hour Window (Nov 15 18:00–24:00 UTC)", "value": "win_6h_latest"},
-    {"label": "[Windows] Final 1-Hour Window (Nov 15 22:00–24:00 UTC)", "value": "win_1h_latest"},
+    {"label": "[Windows] Final 6-Hour Window (Nov 20 18:00–24:00 UTC)", "value": "win_6h_latest"},
+    {"label": "[Windows] Final 1-Hour Window (Nov 20 22:00–24:00 UTC)", "value": "win_1h_latest"},
 ]
 
 PROJECTION_OPTIONS = [
@@ -135,7 +135,7 @@ def render_content(data, projection="natural earth", metric_key="total_edits", s
     mode = data.get("mode", "days")
     requested_mode = data.get("requested_mode", mode)
     selected_region = data.get("region", "ALL") or "ALL"
-    range_label = data.get("range_label", "All 62 Curated Days (2026-09-15 – 2026-11-15)")
+    range_label = data.get("range_label", "All 67 Curated Days (2026-09-15 – 2026-11-20)")
 
     # Fallback to m6_geospatial if unit test mock returns empty country_rollup
     if not country_rollup and m6_geo.get("top_countries_or_regions"):
@@ -175,13 +175,13 @@ def render_content(data, projection="natural earth", metric_key="total_edits", s
         ("Selected range", range_label),
         ("Region filter", "All Regions (Global)" if selected_region == "ALL" else selected_region),
         ("First bucket", metrics.get("first_bucket") or "2026-09-15"),
-        ("Last bucket", metrics.get("last_bucket") or "2026-11-15"),
+        ("Last bucket", metrics.get("last_bucket") or "2026-11-20"),
         ("Privacy policy", "Subject geography only (0 editor IPs)"),
     ]
     if ing:
         pills.append((
             "Total lake corpus",
-            f"{ing.get('curated_deduplicated_events', 11749142):,} rc_events ({ing.get('distinct_days', 62)} days)",
+            f"{ing.get('curated_deduplicated_events', 11749142):,} rc_events ({ing.get('distinct_days', 67)} days)",
         ))
 
     fallback_notice = []
@@ -189,7 +189,7 @@ def render_content(data, projection="natural earth", metric_key="total_edits", s
         fallback_notice = [
             notice(
                 "Window horizon note",
-                "Pre-computed 5m and 1h window tables cover the Nov 01 – Nov 15 evaluation period. "
+                "Pre-computed 5m and 1h window tables cover the Nov 01 – Nov 20 evaluation period. "
                 "Showing daily RecentChanges aggregation for the selected pre-November baseline dates.",
             )
         ]
@@ -307,7 +307,7 @@ def render_content(data, projection="natural earth", metric_key="total_edits", s
 def render(data):
     """Render the RecentChanges Geospatial Map page with interactive [Days / Windows] and Region controls."""
     mode = data.get("requested_mode") or data.get("mode") or "days"
-    time_range = data.get("time_range") or "62d"
+    time_range = data.get("time_range") or "67d"
     selected_region = data.get("region") or "ALL"
     available_regions = data.get("available_regions") or DEFAULT_REGIONS
     region_options = [
@@ -320,7 +320,7 @@ def render(data):
             "GEOSPATIAL / RECENTCHANGES REGIONAL MAP",
             "Regional edits across days and windows.",
             "Explore historical RecentChanges edit volume, human vs bot activity, byte churn, and reverts by region. "
-            "Switch between Daily (62 days: Sep 15 – Nov 15) and Windowed (5m / 1h) granularity from the curated ingest_curate lake.",
+            "Switch between Daily (67 days: Sep 15 – Nov 20) and Windowed (5m / 1h) granularity from the curated ingest_curate lake.",
         ),
         html.Div([
             html.Div([

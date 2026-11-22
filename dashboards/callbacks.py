@@ -54,7 +54,7 @@ def render_dashboard(service, pathname, search, duration, view, title, start, en
     load_start = start
     if page_name == "geospatial_map":
         load_view = query.get("mode", ["days"])[0]
-        load_start = query.get("range", ["62d"])[0]
+        load_start = query.get("range", ["67d"])[0]
         selected_title = query.get("region", ["ALL"])[0]
     data = service.load(
         page_name, duration, load_view, selected_title, load_start, end,
@@ -98,7 +98,7 @@ def render_dashboard(service, pathname, search, duration, view, title, start, en
         "milestone6",
     ):
         status = (
-            "HISTORICAL CURATED LAKE (ingest_curate · 2026-09-15 – 2026-11-15) · Last refresh: "
+            "HISTORICAL CURATED LAKE (ingest_curate · 2026-09-15 – 2026-11-20) · Last refresh: "
             + data.get("loaded_at", "pending")
         )
     else:
@@ -291,7 +291,7 @@ def register_callbacks(app, service, activity_workspace=None):
                 target_region = str(pt["location"])
 
         data = service.load(
-            "geospatial_map", "5m", geo_mode or "days", target_region, geo_range or "62d", None
+            "geospatial_map", "5m", geo_mode or "days", target_region, geo_range or "67d", None
         )
         return (
             geospatial_map.render_content(

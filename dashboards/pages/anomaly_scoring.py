@@ -274,10 +274,10 @@ def render_content(
     total_1h_win = win_feat.get("windows_1h_total")
 
     horizon_label = {
-        "1d": "1 Day (1D: 2026-11-15)",
-        "1w": "1 Week (1W: Nov 08 – Nov 15)",
-        "1m": "1 Month (1M: Oct 16 – Nov 15)",
-    }.get(window_horizon, "1 Week (1W: Nov 08 – Nov 15)")
+        "1d": "1 Day (1D: 2026-11-20)",
+        "1w": "1 Week (1W: Nov 13 – Nov 20)",
+        "1m": "1 Month (1M: Oct 21 – Nov 20)",
+    }.get(window_horizon, "1 Week (1W: Nov 13 – Nov 20)")
 
     scoring_pills = [
         ("Data source", "ingest_curate.py (Strictly Historical Curated Lake)"),
@@ -288,7 +288,7 @@ def render_content(
     if ing:
         scoring_pills.append((
             "Curated rc_events",
-            f"{ing.get('curated_deduplicated_events', 11749142):,} ({ing.get('distinct_days', 62)} days)",
+            f"{ing.get('curated_deduplicated_events', 11749142):,} ({ing.get('distinct_days', 67)} days)",
         ))
     if total_5m_win is not None and total_1h_win is not None:
         scoring_pills.append(("5m windows evaluated", f"{total_5m_win:,}"))
@@ -440,7 +440,7 @@ def render(data):
         heading(
             "DETECT / HISTORICAL ANOMALY SCORING (INGEST_CURATE)",
             "Explainable knowledge-shift scoring.",
-            "Strictly historical curated evaluation from ingest_curate.py (2026-09-15 – 2026-11-15): interactively filter by Evaluation Window (1D, 1W, 1M), Knowledge-Shift Class, and Minimum Score Threshold, and inspect individual alerts in the Single-Alert Explainability Inspector.",
+            "Strictly historical curated evaluation from ingest_curate.py (2026-09-15 – 2026-11-20): interactively filter by Evaluation Window (1D, 1W, 1M), Knowledge-Shift Class, and Minimum Score Threshold, and inspect individual alerts in the Single-Alert Explainability Inspector.",
         ),
         html.Div([
             html.Div([

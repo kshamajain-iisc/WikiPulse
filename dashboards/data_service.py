@@ -178,7 +178,7 @@ class DashboardDataService:
             }
         if page == "geospatial_map":
             geo_mode = view if view in ("days", "windows_5m", "windows_1h") else "days"
-            geo_range = start or "62d"
+            geo_range = start or "67d"
             geo_region = title or "ALL"
             geo_data = {}
             if hasattr(self.queries, "geospatial_recentchanges"):

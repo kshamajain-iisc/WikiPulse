@@ -51,7 +51,7 @@ def render(data):
         heading(
             "ENRICH / HISTORICAL CONTEXTUAL FEATURES (INGEST_CURATE)",
             "Topic spillover, subject geography & Lift Wing Revert Risk.",
-            "Strictly historical curated enrichments from ingest_curate.py (2026-09-15 – 2026-11-15): investigate co-edited link/backlink spillover networks, MediaWiki revision diffs, subject location provenance, and Lift Wing ML Revert Risk calibration. For interactive regional RecentChanges exploration by [days / windows], open the Geospatial Map page.",
+            "Strictly historical curated enrichments from ingest_curate.py (2026-09-15 – 2026-11-20): investigate co-edited link/backlink spillover networks, MediaWiki revision diffs, subject location provenance, and Lift Wing ML Revert Risk calibration. For interactive regional RecentChanges exploration by [days / windows], open the Geospatial Map page.",
         ),
         html.Div([
             metric(

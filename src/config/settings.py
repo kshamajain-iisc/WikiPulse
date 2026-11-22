@@ -141,11 +141,11 @@ REVERTED_TAG = "mw-reverted"
 REVERT_ACTION_TAGS = ("mw-rollback", "mw-undo", "mw-manual-revert")
 REVERT_TAGS = (REVERTED_TAG,) + REVERT_ACTION_TAGS
 
-# Baseline vs Evaluation split for the Sept 15 - Nov 15 dataset (62 days)
+# Baseline vs Evaluation split for the Sept 15 - Nov 20 dataset (67 days)
 BASELINE_START_DATE = "2026-09-15"
 BASELINE_END_DATE = "2026-10-31"       # 47-day baseline window (Sept 15 - Oct 31)
-EVALUATION_START_DATE = "2026-11-01"   # Post-Oct-31 evaluation window (Nov 01 - Nov 15)
-EVALUATION_END_DATE = "2026-11-15"
+EVALUATION_START_DATE = "2026-11-01"   # Post-Oct-31 evaluation window (Nov 01 - Nov 20)
+EVALUATION_END_DATE = "2026-11-20"
 ROLLING_BASELINE_DAYS = 14
 
 #Detector thresholds (Milestone 5)

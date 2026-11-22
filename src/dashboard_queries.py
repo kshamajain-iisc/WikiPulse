@@ -88,18 +88,21 @@ _COMPILED_GEO_GAZETTEER = [
 ]
 
 GEO_TIME_RANGES = {
-    "62d": ("2026-09-15", "2026-11-15", None, None, "All 62 Curated Days (2026-09-15 – 2026-11-15)"),
-    "55d": ("2026-09-15", "2026-11-15", None, None, "All 62 Curated Days (2026-09-15 – 2026-11-15)"),
-    "30d": ("2026-10-17", "2026-11-15", None, None, "Last 30 Curated Days (2026-10-17 – 2026-11-15)"),
+    "67d": ("2026-09-15", "2026-11-20", None, None, "All 67 Curated Days (2026-09-15 – 2026-11-20)"),
+    "62d": ("2026-09-15", "2026-11-20", None, None, "All 67 Curated Days (2026-09-15 – 2026-11-20)"),
+    "55d": ("2026-09-15", "2026-11-20", None, None, "All 67 Curated Days (2026-09-15 – 2026-11-20)"),
+    "30d": ("2026-10-22", "2026-11-20", None, None, "Last 30 Curated Days (2026-10-22 – 2026-11-20)"),
+    "20d": ("2026-11-01", "2026-11-20", None, None, "Evaluation 20 Days (2026-11-01 – 2026-11-20)"),
     "15d": ("2026-11-01", "2026-11-15", None, None, "Evaluation 15 Days (2026-11-01 – 2026-11-15)"),
-    "8d": ("2026-11-08", "2026-11-15", None, None, "Last 8 Curated Days (2026-11-08 – 2026-11-15)"),
+    "8d": ("2026-11-13", "2026-11-20", None, None, "Last 8 Curated Days (2026-11-13 – 2026-11-20)"),
     "baseline_47d": ("2026-09-15", "2026-10-31", None, None, "Baseline 47 Days (2026-09-15 – 2026-10-31)"),
     "day_2026-11-04": ("2026-11-04", "2026-11-04", "2026-11-04T00:00:00Z", "2026-11-04T23:59:59Z", "Peak Activity Day · 2026-11-04 (24h)"),
-    "day_2026-11-15": ("2026-11-15", "2026-11-15", "2026-11-15T00:00:00Z", "2026-11-15T23:59:59Z", "Final Curated Day · 2026-11-15 (24h)"),
+    "day_2026-11-20": ("2026-11-20", "2026-11-20", "2026-11-20T00:00:00Z", "2026-11-20T23:59:59Z", "Final Curated Day · 2026-11-20 (24h)"),
+    "day_2026-11-15": ("2026-11-15", "2026-11-15", "2026-11-15T00:00:00Z", "2026-11-15T23:59:59Z", "Curated Day · 2026-11-15 (24h)"),
     "day_2026-11-08": ("2026-11-08", "2026-11-08", "2026-11-08T00:00:00Z", "2026-11-08T23:59:59Z", "Curated Day · 2026-11-08 (24h)"),
     "win_6h_peak": ("2026-11-04", "2026-11-04", "2026-11-04T12:00:00Z", "2026-11-04T18:00:00Z", "Peak 6-Hour Window · 2026-11-04 12:00–18:00 UTC"),
-    "win_6h_latest": ("2026-11-15", "2026-11-15", "2026-11-15T18:00:00Z", "2026-11-15T23:59:59Z", "Final 6-Hour Window · 2026-11-15 18:00–24:00 UTC"),
-    "win_1h_latest": ("2026-11-15", "2026-11-15", "2026-11-15T22:00:00Z", "2026-11-15T23:59:59Z", "Final Hour Window · 2026-11-15 22:00–24:00 UTC"),
+    "win_6h_latest": ("2026-11-20", "2026-11-20", "2026-11-20T18:00:00Z", "2026-11-20T23:59:59Z", "Final 6-Hour Window · 2026-11-20 18:00–24:00 UTC"),
+    "win_1h_latest": ("2026-11-20", "2026-11-20", "2026-11-20T22:00:00Z", "2026-11-20T23:59:59Z", "Final Hour Window · 2026-11-20 22:00–24:00 UTC"),
 }
 
 
@@ -283,7 +286,7 @@ class DashboardQueries:
                     rows.append(r)
 
                 # Augment 1h / full-horizon pool with curated surge alerts from rankings_daily
-                # across 2026-10-15 .. 2026-11-15 for dates not already covered by windowed curated/alerts.
+                # across 2026-10-15 .. 2026-11-20 for dates not already covered by windowed curated/alerts.
                 if duration in (None, "1h", "6h"):
                     covered_days = {str(r.get("window_start") or "")[:10] for r in rows if r.get("window_start")}
                     rk_files = self._parquet_files("rankings_daily", prefer_curated_lake=True)
@@ -292,7 +295,7 @@ class DashboardQueries:
                         for item in rk_raw:
                             rk = self._normalize_arrow_row(item)
                             d_str = str(rk.get("day") or "")
-                            if not ("2026-10-15" <= d_str <= "2026-11-15") or d_str in covered_days:
+                            if not ("2026-10-15" <= d_str <= "2026-11-20") or d_str in covered_days:
                                 continue
                             z_val = float(rk.get("daily_velocity_zscore") or 0.0)
                             e_hum = int(rk.get("edits_human") or 0)
@@ -835,11 +838,11 @@ class DashboardQueries:
         }
 
     def geospatial_recentchanges(
-        self, mode: str = "days", time_range: str = "62d", region: str = "ALL"
+        self, mode: str = "days", time_range: str = "67d", region: str = "ALL"
     ) -> dict:
         """Aggregate regional RecentChanges edits across selected days or windows (`ingest_curate`)."""
         mode_norm = mode if mode in ("days", "windows_5m", "windows_1h") else "days"
-        range_key = time_range if time_range in GEO_TIME_RANGES else "62d"
+        range_key = time_range if time_range in GEO_TIME_RANGES else "67d"
         day_start, day_end, ts_start, ts_end, range_label = GEO_TIME_RANGES[range_key]
         selected_region = (region or "ALL").strip()
         available_regions = ["ALL"] + sorted(set(COUNTRY_TO_MACRO.values())) + [

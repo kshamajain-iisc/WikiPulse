@@ -55,7 +55,7 @@ def render(data):
 
     ml_pills = [
         ("Data source", "ingest_curate.py (Strictly Historical Curated Lake)"),
-        ("Curated corpus", f"{ing.get('curated_deduplicated_events', 11749142):,} rc_events ({ing.get('distinct_days', 62)}d)" if ing else "62 days curated"),
+        ("Curated corpus", f"{ing.get('curated_deduplicated_events', 11749142):,} rc_events ({ing.get('distinct_days', 67)}d)" if ing else "67 days curated"),
         ("KMeans k", ml.get("kmeans_k", 6)),
         ("Normal baseline cluster", f"#{normal_cluster} (Normal Quiet Baseline)" if normal_cluster is not None else "—"),
         ("Silhouette score", f"{silhouette:.4f}" if silhouette is not None else "—"),
@@ -71,7 +71,7 @@ def render(data):
         heading(
             "EVALUATE / HISTORICAL ML TESTS & REPORTS (INGEST_CURATE)",
             "Spark ML introspection, detector calibration & false-alert audits.",
-            "Strictly historical curated evaluation from ingest_curate.py (2026-09-15 – 2026-11-15): inspect KMeans (k=6) behavioral cluster centroids, the f_centroid_distance feature in Random Forest, Precision vs False-Alert Rate, Threshold Calibration Curves (50..95), and Detector B vs. C Score Correlation/Disagreement.",
+            "Strictly historical curated evaluation from ingest_curate.py (2026-09-15 – 2026-11-20): inspect KMeans (k=6) behavioral cluster centroids, the f_centroid_distance feature in Random Forest, Precision vs False-Alert Rate, Threshold Calibration Curves (50..95), and Detector B vs. C Score Correlation/Disagreement.",
         ),
         html.Div([
             metric(
